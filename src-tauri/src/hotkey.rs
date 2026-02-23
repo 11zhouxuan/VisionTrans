@@ -132,7 +132,7 @@ fn create_overlay_window(
     // Show window after a brief delay to let WebView initialize
     let win = window.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(std::time::Duration::from_millis(500));
         let _ = win.show();
         let _ = win.set_focus();
     });
