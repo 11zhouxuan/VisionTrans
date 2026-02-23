@@ -110,16 +110,14 @@ export default function ApiSettings({
           {/* Model */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">模型</label>
-            <select
+            <input
+              type="text"
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-            >
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-4o-mini">GPT-4o Mini</option>
-              <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-              <option value="gemini-pro-vision">Gemini Pro Vision</option>
-            </select>
+              placeholder="gpt-4o"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-400 mt-1">如 gpt-4o, gpt-4o-mini, claude-3-5-sonnet-20241022</p>
           </div>
         </>
       ) : (
@@ -142,33 +140,27 @@ export default function ApiSettings({
           {/* Bedrock Region */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">AWS Region</label>
-            <select
+            <input
+              type="text"
               value={bedrockRegion}
               onChange={(e) => onBedrockRegionChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-            >
-              <option value="us-east-1">US East (N. Virginia)</option>
-              <option value="us-west-2">US West (Oregon)</option>
-              <option value="eu-west-1">EU (Ireland)</option>
-              <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
-              <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-            </select>
+              placeholder="us-east-1"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-400 mt-1">如 us-east-1, us-west-2, ap-northeast-1</p>
           </div>
 
           {/* Bedrock Model ID */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Model ID</label>
-            <select
+            <input
+              type="text"
               value={bedrockModelId}
               onChange={(e) => onBedrockModelIdChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-            >
-              <option value="us.anthropic.claude-sonnet-4-5-20250929-v1:0">Claude Sonnet 4.5</option>
-              <option value="us.anthropic.claude-3-5-haiku-20241022-v1:0">Claude 3.5 Haiku</option>
-              <option value="meta.llama3-1-70b-instruct-v1:0">Llama 3.1 70B</option>
-              <option value="amazon.titan-text-premier-v1:0">Amazon Titan Premier</option>
-            </select>
-            <p className="text-xs text-gray-400 mt-1">也可以直接输入自定义 Model ID</p>
+              placeholder="us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-400 mt-1">如 us.anthropic.claude-sonnet-4-5-20250929-v1:0</p>
           </div>
         </>
       )}

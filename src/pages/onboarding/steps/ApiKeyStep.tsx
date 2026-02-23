@@ -100,15 +100,13 @@ export default function ApiKeyStep() {
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">模型</label>
-              <select
+              <input
+                type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gpt-4o-mini">GPT-4o Mini</option>
-                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-              </select>
+                placeholder="gpt-4o"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </>
         ) : (
@@ -125,26 +123,23 @@ export default function ApiKeyStep() {
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Region</label>
-              <select
+              <input
+                type="text"
                 value={bedrockRegion}
                 onChange={(e) => setBedrockRegion(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="us-east-1">US East (N. Virginia)</option>
-                <option value="us-west-2">US West (Oregon)</option>
-                <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
-              </select>
+                placeholder="us-east-1"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Model ID</label>
-              <select
+              <input
+                type="text"
                 value={bedrockModelId}
                 onChange={(e) => setBedrockModelId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="us.anthropic.claude-sonnet-4-5-20250929-v1:0">Claude Sonnet 4.5</option>
-                <option value="us.anthropic.claude-3-5-haiku-20241022-v1:0">Claude 3.5 Haiku</option>
-              </select>
+                placeholder="us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </>
         )}
