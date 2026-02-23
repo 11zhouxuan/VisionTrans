@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { load } from '@tauri-apps/plugin-store';
 import ApiSettings from './components/ApiSettings';
-import LanguageSettings from './components/LanguageSettings';
 import HotkeySettings from './components/HotkeySettings';
 import ProxySettings from './components/ProxySettings';
 import type { AppConfig, ProxyConfig, Provider, UILanguage } from '../../types/config';
@@ -89,14 +88,15 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Language Settings - placed first for easy access */}
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <LanguageSettings
-            targetLanguage={config.targetLanguage}
-            uiLanguage={config.uiLanguage}
-            onTargetLanguageChange={(v) => updateConfig({ targetLanguage: v })}
-            onUILanguageChange={(v) => updateConfig({ uiLanguage: v })}
-          />
+        {/* Target Language + API Settings (core functionality) */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-700">{t('lang.targetLanguage')}</h3>
+          <select value={config.targetLanguage} onChange={(e) => updateConfig({ targetLanguage: e.target.value as 'zh' | 'en' })}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
+            <option value="zh">{t('lang.chinese')}</option>
+            <option value="en">{t('lang.english')}</option>
+          </select>
+          <p className="text-xs text-gray-400">{t('lang.autoDetect')}</p>
         </div>
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -119,6 +119,21 @@ export default function SettingsPage() {
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <ProxySettings proxy={config.proxy} onProxyChange={(v) => updateConfig({ proxy: v })} />
+        </div>
+
+        {/* UI Language - at the bottom */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-700">{t('lang.uiLanguage')}</h3>
+          <div className="flex gap-2">
+            <button onClick={() => updateConfig({ uiLanguage: 'zh' })}
+              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${config.uiLanguage === 'zh' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              中文
+            </button>
+            <button onClick={() => updateConfig({ uiLanguage: 'en' })}
+              className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${config.uiLanguage === 'en' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              English
+            </button>
+          </div>
         </div>
 
         <div className="text-center text-xs text-gray-400 pb-4">
