@@ -4,14 +4,15 @@ import ApiSettings from './components/ApiSettings';
 import LanguageSettings from './components/LanguageSettings';
 import HotkeySettings from './components/HotkeySettings';
 import ProxySettings from './components/ProxySettings';
-import type { AppConfig, ProxyConfig, Provider } from '../../types/config';
+import type { AppConfig, ProxyConfig, Provider, UILanguage } from '../../types/config';
 import { DEFAULT_CONFIG } from '../../types/config';
+import { t, setUILanguage } from '../../lib/i18n';
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [saved, setSaved] = useState(false);
+  const [, forceUpdate] = useState(0);
 
-  // Load config on mount
   useEffect(() => {
     const loadConfig = async () => {
       try {
@@ -24,14 +25,16 @@ export default function SettingsPage() {
         const bedrockModelId = await store.get<string>('bedrockModelId') ?? DEFAULT_CONFIG.bedrockModelId;
         const bedrockRegion = await store.get<string>('bedrockRegion') ?? DEFAULT_CONFIG.bedrockRegion;
         const targetLanguage = await store.get<'zh' | 'en'>('targetLanguage') ?? DEFAULT_CONFIG.targetLanguage;
+        const uiLanguage = await store.get<UILanguage>('uiLanguage') ?? DEFAULT_CONFIG.uiLanguage;
         const hotkey = await store.get<string>('hotkey') ?? DEFAULT_CONFIG.hotkey;
         const proxy = await store.get<ProxyConfig>('proxy') ?? DEFAULT_CONFIG.proxy;
         const onboardingCompleted = await store.get<boolean>('onboardingCompleted') ?? DEFAULT_CONFIG.onboardingCompleted;
 
+        setUILanguage(uiLanguage);
         setConfig({
           provider, apiKey, endpoint, model,
           bedrockApiKey, bedrockModelId, bedrockRegion,
-          targetLanguage, hotkey, proxy, onboardingCompleted,
+          targetLanguage, uiLanguage, hotkey, proxy, onboardingCompleted,
         });
       } catch (err) {
         console.error('Failed to load config:', err);
@@ -40,7 +43,6 @@ export default function SettingsPage() {
     loadConfig();
   }, []);
 
-  // Save config
   const saveConfig = useCallback(async (newConfig: AppConfig) => {
     try {
       const store = await load('config.json', { autoSave: false, defaults: {} });
@@ -52,6 +54,7 @@ export default function SettingsPage() {
       await store.set('bedrockModelId', newConfig.bedrockModelId);
       await store.set('bedrockRegion', newConfig.bedrockRegion);
       await store.set('targetLanguage', newConfig.targetLanguage);
+      await store.set('uiLanguage', newConfig.uiLanguage);
       await store.set('hotkey', newConfig.hotkey);
       await store.set('proxy', newConfig.proxy);
       await store.set('onboardingCompleted', newConfig.onboardingCompleted);
@@ -66,6 +69,11 @@ export default function SettingsPage() {
   const updateConfig = useCallback((partial: Partial<AppConfig>) => {
     setConfig(prev => {
       const newConfig = { ...prev, ...partial };
+      // If UI language changed, update the i18n system and force re-render
+      if (partial.uiLanguage && partial.uiLanguage !== prev.uiLanguage) {
+        setUILanguage(partial.uiLanguage);
+        forceUpdate(n => n + 1);
+      }
       saveConfig(newConfig);
       return newConfig;
     });
@@ -74,26 +82,17 @@ export default function SettingsPage() {
   return (
     <div className="h-screen bg-gray-50 overflow-y-auto custom-scrollbar">
       <div className="max-w-lg mx-auto p-6 space-y-8">
-        {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-800">VisionTrans 设置</h1>
+          <h1 className="text-lg font-bold text-gray-800">{t('settings.title')}</h1>
           {saved && (
-            <span className="text-xs text-green-500 bg-green-50 px-2 py-1 rounded">
-              ✓ 已保存
-            </span>
+            <span className="text-xs text-green-500 bg-green-50 px-2 py-1 rounded">{t('settings.saved')}</span>
           )}
         </div>
 
-        {/* API Settings */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <ApiSettings
-            provider={config.provider}
-            apiKey={config.apiKey}
-            endpoint={config.endpoint}
-            model={config.model}
-            bedrockApiKey={config.bedrockApiKey}
-            bedrockModelId={config.bedrockModelId}
-            bedrockRegion={config.bedrockRegion}
+            provider={config.provider} apiKey={config.apiKey} endpoint={config.endpoint} model={config.model}
+            bedrockApiKey={config.bedrockApiKey} bedrockModelId={config.bedrockModelId} bedrockRegion={config.bedrockRegion}
             onProviderChange={(v) => updateConfig({ provider: v })}
             onApiKeyChange={(v) => updateConfig({ apiKey: v })}
             onEndpointChange={(v) => updateConfig({ endpoint: v })}
@@ -104,34 +103,26 @@ export default function SettingsPage() {
           />
         </div>
 
-        {/* Language Settings */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <LanguageSettings
             targetLanguage={config.targetLanguage}
+            uiLanguage={config.uiLanguage}
             onTargetLanguageChange={(v) => updateConfig({ targetLanguage: v })}
+            onUILanguageChange={(v) => updateConfig({ uiLanguage: v })}
           />
         </div>
 
-        {/* Hotkey Settings */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <HotkeySettings
-            hotkey={config.hotkey}
-            onHotkeyChange={(v) => updateConfig({ hotkey: v })}
-          />
+          <HotkeySettings hotkey={config.hotkey} onHotkeyChange={(v) => updateConfig({ hotkey: v })} />
         </div>
 
-        {/* Proxy Settings */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <ProxySettings
-            proxy={config.proxy}
-            onProxyChange={(v) => updateConfig({ proxy: v })}
-          />
+          <ProxySettings proxy={config.proxy} onProxyChange={(v) => updateConfig({ proxy: v })} />
         </div>
 
-        {/* Footer */}
         <div className="text-center text-xs text-gray-400 pb-4">
-          <p>VisionTrans v1.0 MVP</p>
-          <p className="mt-1">每次翻译约消耗 $0.005 - $0.02 API 费用</p>
+          <p>{t('settings.footer')}</p>
+          <p className="mt-1">{t('settings.costNote')}</p>
         </div>
       </div>
     </div>

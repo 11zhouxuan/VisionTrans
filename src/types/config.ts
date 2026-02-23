@@ -1,5 +1,7 @@
 export type Provider = 'openai' | 'bedrock';
 
+export type UILanguage = 'zh' | 'en';
+
 export interface AppConfig {
   provider: Provider;
   // OpenAI-compatible settings
@@ -12,6 +14,7 @@ export interface AppConfig {
   bedrockRegion: string;
   // Common settings
   targetLanguage: 'zh' | 'en';
+  uiLanguage: UILanguage;
   hotkey: string;
   proxy?: ProxyConfig;
   onboardingCompleted: boolean;
@@ -31,6 +34,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   bedrockModelId: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
   bedrockRegion: 'us-east-1',
   targetLanguage: 'zh',
+  uiLanguage: 'zh',
   hotkey: 'Alt+Q',
   proxy: undefined,
   onboardingCompleted: false,

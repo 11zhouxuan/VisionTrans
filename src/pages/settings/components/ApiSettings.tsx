@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { t } from '../../../lib/i18n';
 import type { Provider } from '../../../types/config';
 
 interface ApiSettingsProps {
@@ -49,146 +50,78 @@ export default function ApiSettings({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-700">API 配置</h3>
+      <h3 className="text-sm font-semibold text-gray-700">{t('api.title')}</h3>
 
-      {/* Provider Selection */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1">服务提供商</label>
+        <label className="block text-xs text-gray-500 mb-1">{t('api.provider')}</label>
         <div className="flex gap-2">
-          <button
-            onClick={() => onProviderChange('openai')}
-            className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-              provider === 'openai'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-            }`}
-          >
-            OpenAI 兼容
+          <button onClick={() => onProviderChange('openai')}
+            className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${provider === 'openai' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+            {t('api.providerOpenai')}
           </button>
-          <button
-            onClick={() => onProviderChange('bedrock')}
-            className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-              provider === 'bedrock'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-gray-200 text-gray-500 hover:border-gray-300'
-            }`}
-          >
-            AWS Bedrock
+          <button onClick={() => onProviderChange('bedrock')}
+            className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${provider === 'bedrock' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+            {t('api.providerBedrock')}
           </button>
         </div>
       </div>
 
       {provider === 'openai' ? (
         <>
-          {/* OpenAI API Key */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">API Key</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => onApiKeyChange(e.target.value)}
-              placeholder="sk-..."
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            {apiKey && (
-              <p className="text-xs text-gray-400 mt-1">当前: {maskKey(apiKey)}</p>
-            )}
+            <label className="block text-xs text-gray-500 mb-1">{t('api.apiKey')}</label>
+            <input type="password" value={apiKey} onChange={(e) => onApiKeyChange(e.target.value)}
+              placeholder={t('api.apiKeyPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            {apiKey && <p className="text-xs text-gray-400 mt-1">{t('api.apiKeyCurrent')}: {maskKey(apiKey)}</p>}
           </div>
-
-          {/* API Endpoint */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">API Endpoint</label>
-            <input
-              type="text"
-              value={endpoint}
-              onChange={(e) => onEndpointChange(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            <label className="block text-xs text-gray-500 mb-1">{t('api.endpoint')}</label>
+            <input type="text" value={endpoint} onChange={(e) => onEndpointChange(e.target.value)}
+              placeholder={t('api.endpointPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
           </div>
-
-          {/* Model */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">模型</label>
-            <input
-              type="text"
-              value={model}
-              onChange={(e) => onModelChange(e.target.value)}
-              placeholder="gpt-4o"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-400 mt-1">如 gpt-4o, gpt-4o-mini, claude-3-5-sonnet-20241022</p>
+            <label className="block text-xs text-gray-500 mb-1">{t('api.model')}</label>
+            <input type="text" value={model} onChange={(e) => onModelChange(e.target.value)}
+              placeholder={t('api.modelPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <p className="text-xs text-gray-400 mt-1">{t('api.modelHint')}</p>
           </div>
         </>
       ) : (
         <>
-          {/* Bedrock API Key */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Bedrock API Key / IAM Token</label>
-            <input
-              type="password"
-              value={bedrockApiKey}
-              onChange={(e) => onBedrockApiKeyChange(e.target.value)}
-              placeholder="Bearer token or API Gateway key"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            {bedrockApiKey && (
-              <p className="text-xs text-gray-400 mt-1">当前: {maskKey(bedrockApiKey)}</p>
-            )}
+            <label className="block text-xs text-gray-500 mb-1">{t('api.bedrockApiKey')}</label>
+            <input type="password" value={bedrockApiKey} onChange={(e) => onBedrockApiKeyChange(e.target.value)}
+              placeholder={t('api.bedrockApiKeyPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            {bedrockApiKey && <p className="text-xs text-gray-400 mt-1">{t('api.apiKeyCurrent')}: {maskKey(bedrockApiKey)}</p>}
           </div>
-
-          {/* Bedrock Region */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">AWS Region</label>
-            <input
-              type="text"
-              value={bedrockRegion}
-              onChange={(e) => onBedrockRegionChange(e.target.value)}
-              placeholder="us-east-1"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-400 mt-1">如 us-east-1, us-west-2, ap-northeast-1</p>
+            <label className="block text-xs text-gray-500 mb-1">{t('api.bedrockRegion')}</label>
+            <input type="text" value={bedrockRegion} onChange={(e) => onBedrockRegionChange(e.target.value)}
+              placeholder={t('api.bedrockRegionPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <p className="text-xs text-gray-400 mt-1">{t('api.bedrockRegionHint')}</p>
           </div>
-
-          {/* Bedrock Model ID */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Model ID</label>
-            <input
-              type="text"
-              value={bedrockModelId}
-              onChange={(e) => onBedrockModelIdChange(e.target.value)}
-              placeholder="us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-400 mt-1">如 us.anthropic.claude-sonnet-4-5-20250929-v1:0</p>
+            <label className="block text-xs text-gray-500 mb-1">{t('api.bedrockModelId')}</label>
+            <input type="text" value={bedrockModelId} onChange={(e) => onBedrockModelIdChange(e.target.value)}
+              placeholder={t('api.bedrockModelIdPlaceholder')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <p className="text-xs text-gray-400 mt-1">{t('api.bedrockModelIdHint')}</p>
           </div>
         </>
       )}
 
-      {/* Test Connection */}
-      <button
-        onClick={handleTestConnection}
+      <button onClick={handleTestConnection}
         disabled={testing || (provider === 'openai' ? !apiKey : !bedrockApiKey)}
-        className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {testing ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            测试中...
-          </>
-        ) : testResult === true ? (
-          <>
-            <CheckCircle className="w-4 h-4" />
-            连接成功
-          </>
-        ) : testResult === false ? (
-          <>
-            <XCircle className="w-4 h-4" />
-            连接失败
-          </>
-        ) : (
-          '测试连接'
-        )}
+        className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+        {testing ? (<><Loader2 className="w-4 h-4 animate-spin" />{t('api.testing')}</>)
+          : testResult === true ? (<><CheckCircle className="w-4 h-4" />{t('api.testSuccess')}</>)
+          : testResult === false ? (<><XCircle className="w-4 h-4" />{t('api.testFailed')}</>)
+          : t('api.testConnection')}
       </button>
     </div>
   );
