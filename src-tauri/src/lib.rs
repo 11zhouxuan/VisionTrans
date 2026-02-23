@@ -114,10 +114,17 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
-            // Prevent the app from exiting when all windows are closed
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
+        .run(|app_handle, event| {
+            match event {
+                // Prevent the app from exiting when all windows are closed
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    api.prevent_exit();
+                }
+                // Handle Dock icon click (macOS reopen event)
+                tauri::RunEvent::Reopen { .. } => {
+                    tray::open_settings_public(app_handle);
+                }
+                _ => {}
             }
         });
 }

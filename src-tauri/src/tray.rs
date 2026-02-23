@@ -6,7 +6,11 @@ use tauri::{
 
 use crate::state::AppState;
 
-/// Open settings window directly (synchronous, for use in tray callbacks)
+/// Open settings window directly (synchronous, for use in tray callbacks and reopen events)
+pub fn open_settings_public(app: &AppHandle) {
+    open_settings(app);
+}
+
 fn open_settings(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     {

@@ -31,7 +31,7 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
         tauri::WebviewUrl::App("/".into()),
     )
     .title("VisionTrans 设置")
-    .inner_size(500.0, 600.0)
+    .inner_size(500.0, 700.0)
     .center()
     .resizable(true)
     .build()
