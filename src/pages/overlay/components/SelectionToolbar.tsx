@@ -1,8 +1,10 @@
-import { Languages, Copy, Download, X } from 'lucide-react';
+import { Languages, Copy, Download, X, Highlighter } from 'lucide-react';
 import type { SelectionRect } from '../hooks/useSelection';
 
 interface SelectionToolbarProps {
   selection: SelectionRect;
+  highlightMode: boolean;
+  onToggleHighlight: () => void;
   onTranslate: () => void;
   onCopy: () => void;
   onSave: () => void;
@@ -11,28 +13,26 @@ interface SelectionToolbarProps {
 
 export default function SelectionToolbar({
   selection,
+  highlightMode,
+  onToggleHighlight,
   onTranslate,
   onCopy,
   onSave,
   onCancel,
 }: SelectionToolbarProps) {
-  // Position toolbar at bottom-right of selection
-  const toolbarWidth = 180;
+  const toolbarWidth = 230;
   const toolbarHeight = 36;
   const gap = 8;
 
   let left = selection.x + selection.width - toolbarWidth;
   let top = selection.y + selection.height + gap;
 
-  // If toolbar goes below screen, put it above selection
   if (top + toolbarHeight > window.innerHeight - 10) {
     top = selection.y - toolbarHeight - gap;
   }
-  // If toolbar goes off right edge
   if (left + toolbarWidth > window.innerWidth - 10) {
     left = window.innerWidth - toolbarWidth - 10;
   }
-  // If toolbar goes off left edge
   if (left < 10) left = 10;
 
   return (
@@ -44,13 +44,26 @@ export default function SelectionToolbar({
       <button
         onClick={onTranslate}
         className="flex items-center gap-1.5 px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-md transition-colors"
-        title="翻译"
+        title="翻译 (Enter)"
       >
         <Languages className="w-3.5 h-3.5" />
         翻译
       </button>
 
       <div className="w-px h-5 bg-gray-600" />
+
+      {/* Highlight marker tool */}
+      <button
+        onClick={onToggleHighlight}
+        className={`p-1.5 rounded transition-colors ${
+          highlightMode
+            ? 'bg-yellow-500/30 text-yellow-300'
+            : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+        }`}
+        title="高亮标记"
+      >
+        <Highlighter className="w-3.5 h-3.5" />
+      </button>
 
       {/* Copy screenshot */}
       <button
@@ -76,7 +89,7 @@ export default function SelectionToolbar({
       <button
         onClick={onCancel}
         className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700/50 rounded transition-colors"
-        title="取消"
+        title="取消 (Esc)"
       >
         <X className="w-3.5 h-3.5" />
       </button>

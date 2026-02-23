@@ -8,6 +8,12 @@ body {
   padding: 0;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: transparent;
+}
+
+/* Overlay window - black background to prevent white flash */
+html {
+  background: transparent;
 }
 
 /* Prevent text selection during overlay interaction */

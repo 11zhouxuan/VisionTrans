@@ -112,9 +112,9 @@ fn create_overlay_window(
         let _ = window.close();
     }
 
-    // Use exact screen size instead of fullscreen() to avoid macOS fullscreen animation
-    // This prevents the "flash/bounce" effect when the overlay appears
-    let _window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
+    // Create window initially hidden, then show after WebView loads
+    // This prevents the "flash/bounce" effect
+    let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
         .title("")
         .inner_size(
             screenshot.logical_width as f64,
@@ -125,9 +125,17 @@ fn create_overlay_window(
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
-        .focused(true)
+        .visible(false)
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
+
+    // Show window after a brief delay to let WebView initialize
+    let win = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let _ = win.show();
+        let _ = win.set_focus();
+    });
 
     Ok(())
 }

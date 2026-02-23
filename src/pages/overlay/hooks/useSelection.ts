@@ -102,17 +102,18 @@ export function useSelection(
       ctx.strokeRect(sel.x, sel.y, sel.width, sel.height);
       ctx.setLineDash([]);
 
-      // Selection dimensions text
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+      // Selection dimensions text - positioned at top-left of selection
       ctx.font = '11px -apple-system, sans-serif';
       const dimText = `${Math.round(sel.width * dpr)} × ${Math.round(sel.height * dpr)}`;
       const textWidth = ctx.measureText(dimText).width;
-      const textX = sel.x + sel.width / 2 - textWidth / 2;
-      const textY = sel.y + sel.height + 16;
+      const textX = sel.x + 4;
+      const textY = sel.y - 6;
+      // If selection is near top, show inside
+      const actualTextY = textY < 14 ? sel.y + 14 : textY;
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(textX - 4, textY - 12, textWidth + 8, 16);
+      ctx.fillRect(textX - 2, actualTextY - 11, textWidth + 4, 15);
       ctx.fillStyle = '#fff';
-      ctx.fillText(dimText, textX, textY);
+      ctx.fillText(dimText, textX, actualTextY);
 
       // Draw 8 resize handles (only when not actively drawing)
       if (!isDrawing) {
