@@ -49,6 +49,37 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            // Setup macOS application menu with "Settings" option
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
+                let app_name = "VisionTrans";
+                let settings_item = MenuItem::with_id(app, "app_settings", "打开设置...", true, Some("CmdOrCtrl+,"))?;
+                let separator = PredefinedMenuItem::separator(app)?;
+                let hide = PredefinedMenuItem::hide(app, Some(app_name))?;
+                let hide_others = PredefinedMenuItem::hide_others(app, None)?;
+                let show_all = PredefinedMenuItem::show_all(app, None)?;
+                let separator2 = PredefinedMenuItem::separator(app)?;
+                let quit = PredefinedMenuItem::quit(app, Some(app_name))?;
+
+                let app_submenu = Submenu::with_items(
+                    app,
+                    app_name,
+                    true,
+                    &[&settings_item, &separator, &hide, &hide_others, &show_all, &separator2, &quit],
+                )?;
+
+                let menu = Menu::with_items(app, &[&app_submenu])?;
+                app.set_menu(menu)?;
+
+                let handle = app_handle.clone();
+                app.on_menu_event(move |_app, event| {
+                    if event.id.as_ref() == "app_settings" {
+                        tray::open_settings_public(&handle);
+                    }
+                });
+            }
+
             // Initialize config store with defaults
             let store = app
                 .store("config.json")
