@@ -48,17 +48,21 @@ fn open_settings(app: &AppHandle) {
 
 /// Setup system tray menu on the tray icon created by tauri.conf.json
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let capture_item = MenuItem::with_id(app, "capture", "截图翻译", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "打开设置", true, None::<&str>)?;
     let pause_item = MenuItem::with_id(app, "pause", "暂停监听", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出 VisionTrans", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&settings_item, &pause_item, &quit_item])?;
+    let menu = Menu::with_items(app, &[&capture_item, &settings_item, &pause_item, &quit_item])?;
 
     // Get the tray icon created by tauri.conf.json (id: "main-tray")
     let tray_id = TrayIconId::new("main-tray");
     if let Some(tray) = app.tray_by_id(&tray_id) {
         tray.set_menu(Some(menu))?;
         tray.on_menu_event(move |app, event| match event.id.as_ref() {
+            "capture" => {
+                let _ = crate::hotkey::trigger_capture(app);
+            }
             "settings" => {
                 open_settings(app);
             }

@@ -51,7 +51,7 @@ fn get_configured_hotkey(app: &AppHandle) -> String {
     "Alt+Q".to_string()
 }
 
-fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
+pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     let state = app.state::<AppState>();
 
     // Prevent duplicate triggers

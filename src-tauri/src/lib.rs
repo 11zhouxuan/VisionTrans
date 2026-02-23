@@ -69,7 +69,23 @@ pub fn run() {
                     &[&settings_item, &separator, &hide, &hide_others, &show_all, &separator2, &quit],
                 )?;
 
-                let menu = Menu::with_items(app, &[&app_submenu])?;
+                // Edit menu - required for Cmd+C/V/X/A to work in WebView input fields
+                let undo = PredefinedMenuItem::undo(app, None)?;
+                let redo = PredefinedMenuItem::redo(app, None)?;
+                let sep_edit1 = PredefinedMenuItem::separator(app)?;
+                let cut = PredefinedMenuItem::cut(app, None)?;
+                let copy = PredefinedMenuItem::copy(app, None)?;
+                let paste = PredefinedMenuItem::paste(app, None)?;
+                let select_all = PredefinedMenuItem::select_all(app, None)?;
+
+                let edit_submenu = Submenu::with_items(
+                    app,
+                    "Edit",
+                    true,
+                    &[&undo, &redo, &sep_edit1, &cut, &copy, &paste, &select_all],
+                )?;
+
+                let menu = Menu::with_items(app, &[&app_submenu, &edit_submenu])?;
                 app.set_menu(menu)?;
 
                 let handle = app_handle.clone();
