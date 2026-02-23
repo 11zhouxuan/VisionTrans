@@ -112,8 +112,10 @@ fn create_overlay_window(
         let _ = window.close();
     }
 
+    // Use exact screen size instead of fullscreen() to avoid macOS fullscreen animation
+    // This prevents the "flash/bounce" effect when the overlay appears
     let _window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
-        .title("VisionTrans Overlay")
+        .title("")
         .inner_size(
             screenshot.logical_width as f64,
             screenshot.logical_height as f64,
@@ -123,7 +125,7 @@ fn create_overlay_window(
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
-        .fullscreen(true)
+        .focused(true)
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
