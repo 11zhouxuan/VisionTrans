@@ -164,8 +164,13 @@ pub fn run() {
         .run(|app_handle, event| {
             match event {
                 // Prevent the app from exiting when all windows are closed
-                tauri::RunEvent::ExitRequested { api, .. } => {
-                    api.prevent_exit();
+                // but allow explicit exit (e.g., from tray "quit" menu)
+                tauri::RunEvent::ExitRequested { api, code, .. } => {
+                    // code is Some when exit was explicitly requested (app.exit())
+                    // code is None when it's triggered by all windows closing
+                    if code.is_none() {
+                        api.prevent_exit();
+                    }
                 }
                 // Handle Dock icon click (macOS reopen event)
                 tauri::RunEvent::Reopen { .. } => {

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useSelection } from './hooks/useSelection';
@@ -10,7 +10,6 @@ export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
-  const [highlightMode, setHighlightMode] = useState(false);
 
   // Fetch screenshot data from Rust backend
   useEffect(() => {
@@ -56,84 +55,31 @@ export default function OverlayPage() {
     if (bgImage) redraw();
   }, [bgImage, redraw]);
 
-  // Show toolbar when selection is complete and not actively drawing/resizing
+  // Show toolbar when selection is complete
   const showToolbar = selection && selection.width > MIN_CROP_SIZE && selection.height > MIN_CROP_SIZE && !isDrawing && !isResizing;
 
-  // Highlight drawing state
-  const isHighlighting = useRef(false);
-  const highlightPoints = useRef<Array<{x: number; y: number}>>([]);
-
-  // Handle mouse events - either selection or highlight mode
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (highlightMode && selection) {
-      // Start highlighting inside selection
-      const x = e.nativeEvent.offsetX;
-      const y = e.nativeEvent.offsetY;
-      if (x >= selection.x && x <= selection.x + selection.width &&
-          y >= selection.y && y <= selection.y + selection.height) {
-        isHighlighting.current = true;
-        highlightPoints.current = [{ x, y }];
-        return;
-      }
-    }
-    onMouseDown(e);
-  }, [highlightMode, selection, onMouseDown]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isHighlighting.current && highlightMode) {
-      const x = e.nativeEvent.offsetX;
-      const y = e.nativeEvent.offsetY;
-      highlightPoints.current.push({ x, y });
-
-      // Draw highlight stroke on canvas
-      const ctx = canvasRef.current?.getContext('2d');
-      if (ctx && highlightPoints.current.length >= 2) {
-        const prev = highlightPoints.current[highlightPoints.current.length - 2];
-        const curr = highlightPoints.current[highlightPoints.current.length - 1];
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255, 230, 0, 0.35)';
-        ctx.lineWidth = 20;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(curr.x, curr.y);
-        ctx.stroke();
-      }
-      return;
-    }
-    onMouseMove(e);
-  }, [highlightMode, onMouseMove]);
-
-  const handleMouseUp = useCallback(() => {
-    if (isHighlighting.current) {
-      isHighlighting.current = false;
-      return;
-    }
-    onMouseUp();
-  }, [onMouseUp]);
-
-  // Crop selection area from the canvas (includes highlights)
+  // Crop selection area from the original image (clean, no overlays)
   const cropSelection = useCallback((): string | null => {
-    if (!selection || !canvasRef.current) return null;
+    if (!selection || !bgImage) return null;
     const dpr = window.devicePixelRatio || 1;
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return null;
-
-    // Get image data from the canvas (which includes any highlight marks)
-    const imageData = ctx.getImageData(
-      selection.x * dpr, selection.y * dpr,
-      selection.width * dpr, selection.height * dpr
-    );
 
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = selection.width * dpr;
     tempCanvas.height = selection.height * dpr;
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return null;
-    tempCtx.putImageData(imageData, 0, 0);
+
+    // Draw from the original image directly (clean, no overlays/handles)
+    tempCtx.drawImage(
+      bgImage,
+      selection.x * dpr, selection.y * dpr,
+      selection.width * dpr, selection.height * dpr,
+      0, 0,
+      selection.width * dpr, selection.height * dpr
+    );
 
     return tempCanvas.toDataURL('image/png').split(',')[1];
-  }, [selection]);
+  }, [selection, bgImage]);
 
   // Handle translate
   const handleTranslate = useCallback(async () => {
@@ -158,9 +104,7 @@ export default function OverlayPage() {
       console.error('Failed to start translation:', err);
     }
 
-    try {
-      await getCurrentWindow().close();
-    } catch {}
+    try { await getCurrentWindow().close(); } catch {}
   }, [cropSelection, selection]);
 
   const handleCopy = useCallback(async () => {
@@ -197,23 +141,21 @@ export default function OverlayPage() {
   return (
     <div
       className="fixed inset-0 no-select"
-      style={{ cursor: highlightMode && selection ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'10\' fill=\'rgba(255,230,0,0.4)\' stroke=\'%23fbbf24\' stroke-width=\'1\'/%3E%3C/svg%3E") 12 12, crosshair' : 'crosshair' }}
+      style={{ cursor: 'crosshair' }}
       onContextMenu={(e) => { e.preventDefault(); handleCancel(); }}
     >
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
       />
 
       {/* Selection toolbar */}
       {showToolbar && selection && (
         <SelectionToolbar
           selection={selection}
-          highlightMode={highlightMode}
-          onToggleHighlight={() => setHighlightMode(!highlightMode)}
           onTranslate={handleTranslate}
           onCopy={handleCopy}
           onSave={handleSave}
