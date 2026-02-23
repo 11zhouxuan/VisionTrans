@@ -10,6 +10,9 @@ export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  const [brushMode, setBrushMode] = useState(false);
+  const brushPoints = useRef<Array<{x: number; y: number}>>([]);
+  const isBrushing = useRef(false);
 
   // Fetch screenshot data from Rust backend
   useEffect(() => {
@@ -43,45 +46,99 @@ export default function OverlayPage() {
     img.src = `data:image/png;base64,${screenshotBase64}`;
   }, [screenshotBase64]);
 
-  // Selection hook
+  // Selection hook - starts with full screen selected
   const {
     selection, isDrawing, isResizing,
     onMouseDown, onMouseMove, onMouseUp,
-    redraw,
+    redraw, setInitialSelection,
   } = useSelection(canvasRef, bgImage);
 
-  // Initial draw when bgImage loads
+  // Set initial full-screen selection when bgImage loads
   useEffect(() => {
-    if (bgImage) redraw();
-  }, [bgImage, redraw]);
+    if (bgImage) {
+      setInitialSelection({
+        x: 0, y: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+      redraw();
+    }
+  }, [bgImage, setInitialSelection, redraw]);
 
-  // Show toolbar when selection is complete
+  // Show toolbar when selection exists
   const showToolbar = selection && selection.width > MIN_CROP_SIZE && selection.height > MIN_CROP_SIZE && !isDrawing && !isResizing;
 
-  // Crop selection area from the original image (clean, no overlays)
+  // Brush drawing handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (brushMode && selection) {
+      const x = e.nativeEvent.offsetX;
+      const y = e.nativeEvent.offsetY;
+      // Only brush inside selection
+      if (x >= selection.x && x <= selection.x + selection.width &&
+          y >= selection.y && y <= selection.y + selection.height) {
+        isBrushing.current = true;
+        brushPoints.current = [{ x, y }];
+        return;
+      }
+    }
+    onMouseDown(e);
+  }, [brushMode, selection, onMouseDown]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isBrushing.current && brushMode) {
+      const x = e.nativeEvent.offsetX;
+      const y = e.nativeEvent.offsetY;
+      brushPoints.current.push({ x, y });
+
+      const ctx = canvasRef.current?.getContext('2d');
+      if (ctx && brushPoints.current.length >= 2) {
+        const prev = brushPoints.current[brushPoints.current.length - 2];
+        const curr = brushPoints.current[brushPoints.current.length - 1];
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 230, 0, 0.25)';
+        ctx.lineWidth = 24;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(curr.x, curr.y);
+        ctx.stroke();
+      }
+      return;
+    }
+    onMouseMove(e);
+  }, [brushMode, onMouseMove]);
+
+  const handleMouseUp = useCallback(() => {
+    if (isBrushing.current) {
+      isBrushing.current = false;
+      return;
+    }
+    onMouseUp();
+  }, [onMouseUp]);
+
+  // Crop: send the full selection area (with brush marks as context)
   const cropSelection = useCallback((): string | null => {
-    if (!selection || !bgImage) return null;
+    if (!selection || !canvasRef.current) return null;
     const dpr = window.devicePixelRatio || 1;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return null;
+
+    // Get from canvas which includes brush marks
+    const imageData = ctx.getImageData(
+      selection.x * dpr, selection.y * dpr,
+      selection.width * dpr, selection.height * dpr
+    );
 
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = selection.width * dpr;
     tempCanvas.height = selection.height * dpr;
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return null;
-
-    // Draw from the original image directly (clean, no overlays/handles)
-    tempCtx.drawImage(
-      bgImage,
-      selection.x * dpr, selection.y * dpr,
-      selection.width * dpr, selection.height * dpr,
-      0, 0,
-      selection.width * dpr, selection.height * dpr
-    );
+    tempCtx.putImageData(imageData, 0, 0);
 
     return tempCanvas.toDataURL('image/png').split(',')[1];
-  }, [selection, bgImage]);
+  }, [selection]);
 
-  // Handle translate
   const handleTranslate = useCallback(async () => {
     const croppedBase64 = cropSelection();
     if (!croppedBase64 || !selection) return;
@@ -125,14 +182,10 @@ export default function OverlayPage() {
     }
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleCancel();
-      } else if (e.key === 'Enter' && showToolbar) {
-        handleTranslate();
-      }
+      if (e.key === 'Escape') handleCancel();
+      else if (e.key === 'Enter' && showToolbar) handleTranslate();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -141,21 +194,22 @@ export default function OverlayPage() {
   return (
     <div
       className="fixed inset-0 no-select"
-      style={{ cursor: 'crosshair' }}
+      style={{ cursor: brushMode ? 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'10\' fill=\'rgba(255,230,0,0.3)\' stroke=\'%23fbbf24\' stroke-width=\'1\'/%3E%3C/svg%3E") 12 12, crosshair' : 'crosshair' }}
       onContextMenu={(e) => { e.preventDefault(); handleCancel(); }}
     >
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
       />
 
-      {/* Selection toolbar */}
       {showToolbar && selection && (
         <SelectionToolbar
           selection={selection}
+          brushMode={brushMode}
+          onToggleBrush={() => setBrushMode(!brushMode)}
           onTranslate={handleTranslate}
           onCopy={handleCopy}
           onSave={handleSave}

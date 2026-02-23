@@ -1,8 +1,10 @@
-import { Languages, Copy, Download, X } from 'lucide-react';
+import { Languages, Copy, Download, X, Paintbrush } from 'lucide-react';
 import type { SelectionRect } from '../hooks/useSelection';
 
 interface SelectionToolbarProps {
   selection: SelectionRect;
+  brushMode: boolean;
+  onToggleBrush: () => void;
   onTranslate: () => void;
   onCopy: () => void;
   onSave: () => void;
@@ -11,12 +13,14 @@ interface SelectionToolbarProps {
 
 export default function SelectionToolbar({
   selection,
+  brushMode,
+  onToggleBrush,
   onTranslate,
   onCopy,
   onSave,
   onCancel,
 }: SelectionToolbarProps) {
-  const toolbarWidth = 200;
+  const toolbarWidth = 240;
   const toolbarHeight = 36;
   const gap = 8;
 
@@ -30,6 +34,7 @@ export default function SelectionToolbar({
     left = window.innerWidth - toolbarWidth - 10;
   }
   if (left < 10) left = 10;
+  if (top < 10) top = 10;
 
   return (
     <div
@@ -46,6 +51,19 @@ export default function SelectionToolbar({
       </button>
 
       <div className="w-px h-5 bg-gray-600" />
+
+      {/* Brush marker tool */}
+      <button
+        onClick={onToggleBrush}
+        className={`p-1.5 rounded transition-colors ${
+          brushMode
+            ? 'bg-yellow-500/30 text-yellow-300'
+            : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+        }`}
+        title="画笔标记"
+      >
+        <Paintbrush className="w-3.5 h-3.5" />
+      </button>
 
       <button
         onClick={onCopy}

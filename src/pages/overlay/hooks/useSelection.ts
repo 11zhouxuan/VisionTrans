@@ -18,6 +18,7 @@ interface UseSelectionReturn {
   onMouseUp: () => void;
   redraw: () => void;
   mousePos: { x: number; y: number };
+  setInitialSelection: (rect: SelectionRect) => void;
 }
 
 const HANDLE_SIZE = 8;
@@ -235,5 +236,10 @@ export function useSelection(
     redraw();
   }, [redraw]);
 
-  return { selection, isDrawing, isResizing, onMouseDown, onMouseMove, onMouseUp, redraw, mousePos };
+  const setInitialSelection = useCallback((rect: SelectionRect) => {
+    selRef.current = rect;
+    setSelection(rect);
+  }, []);
+
+  return { selection, isDrawing, isResizing, onMouseDown, onMouseMove, onMouseUp, redraw, mousePos, setInitialSelection };
 }
