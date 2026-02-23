@@ -89,6 +89,16 @@ export default function SettingsPage() {
           )}
         </div>
 
+        {/* Language Settings - placed first for easy access */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <LanguageSettings
+            targetLanguage={config.targetLanguage}
+            uiLanguage={config.uiLanguage}
+            onTargetLanguageChange={(v) => updateConfig({ targetLanguage: v })}
+            onUILanguageChange={(v) => updateConfig({ uiLanguage: v })}
+          />
+        </div>
+
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <ApiSettings
             provider={config.provider} apiKey={config.apiKey} endpoint={config.endpoint} model={config.model}
@@ -100,15 +110,6 @@ export default function SettingsPage() {
             onBedrockApiKeyChange={(v) => updateConfig({ bedrockApiKey: v })}
             onBedrockModelIdChange={(v) => updateConfig({ bedrockModelId: v })}
             onBedrockRegionChange={(v) => updateConfig({ bedrockRegion: v })}
-          />
-        </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <LanguageSettings
-            targetLanguage={config.targetLanguage}
-            uiLanguage={config.uiLanguage}
-            onTargetLanguageChange={(v) => updateConfig({ targetLanguage: v })}
-            onUILanguageChange={(v) => updateConfig({ uiLanguage: v })}
           />
         </div>
 
