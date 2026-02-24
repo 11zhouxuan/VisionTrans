@@ -25,6 +25,7 @@ pub fn run() {
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::capture::get_screenshot,
+            commands::capture::trigger_capture_command,
             commands::translate::start_translation,
             commands::translate::retry_translation,
             commands::translate::test_api_connection,
@@ -54,6 +55,7 @@ pub fn run() {
             {
                 use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
                 let app_name = "VisionTrans";
+                let capture_item = MenuItem::with_id(app, "app_capture", "截图翻译", true, Some("CmdOrCtrl+Shift+S"))?;
                 let settings_item = MenuItem::with_id(app, "app_settings", "打开设置...", true, Some("CmdOrCtrl+,"))?;
                 let separator = PredefinedMenuItem::separator(app)?;
                 let hide = PredefinedMenuItem::hide(app, Some(app_name))?;
@@ -66,7 +68,7 @@ pub fn run() {
                     app,
                     app_name,
                     true,
-                    &[&settings_item, &separator, &hide, &hide_others, &show_all, &separator2, &quit],
+                    &[&capture_item, &settings_item, &separator, &hide, &hide_others, &show_all, &separator2, &quit],
                 )?;
 
                 // Edit menu - required for Cmd+C/V/X/A to work in WebView input fields
@@ -90,8 +92,22 @@ pub fn run() {
 
                 let handle = app_handle.clone();
                 app.on_menu_event(move |_app, event| {
-                    if event.id.as_ref() == "app_settings" {
-                        tray::open_settings_public(&handle);
+                    match event.id.as_ref() {
+                        "app_capture" => {
+                            // Hide settings window if visible, then capture
+                            if let Some(win) = handle.get_webview_window("settings") {
+                                let _ = win.hide();
+                            }
+                            let h = handle.clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(300));
+                                let _ = hotkey::trigger_capture(&h);
+                            });
+                        }
+                        "app_settings" => {
+                            tray::open_settings_public(&handle);
+                        }
+                        _ => {}
                     }
                 });
             }

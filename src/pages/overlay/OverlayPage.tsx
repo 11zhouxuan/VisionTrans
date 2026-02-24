@@ -53,13 +53,17 @@ export default function OverlayPage() {
     redraw, setInitialSelection,
   } = useSelection(canvasRef, bgImage);
 
-  // Set initial full-screen selection when bgImage loads
+  // Set initial selection to center 80% of screen when bgImage loads
   useEffect(() => {
     if (bgImage) {
+      const padding = 0.1; // 10% padding on each side
+      const w = window.innerWidth;
+      const h = window.innerHeight;
       setInitialSelection({
-        x: 0, y: 0,
-        width: window.innerWidth,
-        height: window.innerHeight,
+        x: Math.round(w * padding),
+        y: Math.round(h * padding),
+        width: Math.round(w * (1 - 2 * padding)),
+        height: Math.round(h * (1 - 2 * padding)),
       });
       redraw();
     }
