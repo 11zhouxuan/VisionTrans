@@ -124,7 +124,7 @@ export default function OverlayPage() {
 
   useEffect(() => {
     if (bgImage) {
-      const padding = 0.1;
+      const padding = 0.1; // 10% padding each side = 80% center selection
       const w = window.innerWidth;
       const h = window.innerHeight;
       setInitialSelection({
