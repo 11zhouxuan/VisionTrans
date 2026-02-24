@@ -24,6 +24,8 @@ export default function OverlayPage() {
   // Undo/Redo history (snapshots of mark canvas)
   const undoStack = useRef<ImageData[]>([]);
   const redoStack = useRef<ImageData[]>([]);
+  const [undoCount, setUndoCount] = useState(0);
+  const [redoCount, setRedoCount] = useState(0);
 
   const saveSnapshot = useCallback(() => {
     if (!markCanvasRef.current) return;
@@ -31,33 +33,9 @@ export default function OverlayPage() {
     if (!ctx) return;
     const snapshot = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
     undoStack.current.push(snapshot);
-    redoStack.current = []; // Clear redo on new action
-  }, []);
-
-  const handleUndo = useCallback(() => {
-    if (!markCanvasRef.current || undoStack.current.length === 0) return;
-    const ctx = markCanvasRef.current.getContext('2d');
-    if (!ctx) return;
-    // Save current state to redo
-    const current = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
-    redoStack.current.push(current);
-    // Restore previous state
-    const prev = undoStack.current.pop()!;
-    ctx.putImageData(prev, 0, 0);
-    redraw();
-  }, []);
-
-  const handleRedo = useCallback(() => {
-    if (!markCanvasRef.current || redoStack.current.length === 0) return;
-    const ctx = markCanvasRef.current.getContext('2d');
-    if (!ctx) return;
-    // Save current to undo
-    const current = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
-    undoStack.current.push(current);
-    // Restore redo state
-    const next = redoStack.current.pop()!;
-    ctx.putImageData(next, 0, 0);
-    redraw();
+    redoStack.current = [];
+    setUndoCount(undoStack.current.length);
+    setRedoCount(0);
   }, []);
 
   // Fetch screenshot data
@@ -116,6 +94,33 @@ export default function OverlayPage() {
       }
     }
   }, [baseRedraw]);
+
+  // Undo/Redo handlers (defined after redraw)
+  const handleUndo = useCallback(() => {
+    if (!markCanvasRef.current || undoStack.current.length === 0) return;
+    const ctx = markCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+    const current = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
+    redoStack.current.push(current);
+    const prev = undoStack.current.pop()!;
+    ctx.putImageData(prev, 0, 0);
+    setUndoCount(undoStack.current.length);
+    setRedoCount(redoStack.current.length);
+    redraw();
+  }, [redraw]);
+
+  const handleRedo = useCallback(() => {
+    if (!markCanvasRef.current || redoStack.current.length === 0) return;
+    const ctx = markCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+    const current = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
+    undoStack.current.push(current);
+    const next = redoStack.current.pop()!;
+    ctx.putImageData(next, 0, 0);
+    setUndoCount(undoStack.current.length);
+    setRedoCount(redoStack.current.length);
+    redraw();
+  }, [redraw]);
 
   useEffect(() => {
     if (bgImage) {
@@ -275,7 +280,7 @@ export default function OverlayPage() {
           onSetMarkTool={setMarkTool} onSetBrushSize={setBrushSize} onSetBrushColor={setBrushColor}
           onTranslate={handleTranslate}
           onUndo={handleUndo} onRedo={handleRedo}
-          canUndo={undoStack.current.length > 0} canRedo={redoStack.current.length > 0}
+          canUndo={undoCount > 0} canRedo={redoCount > 0}
           onCopy={async () => { cropSelection(); try { await getCurrentWindow().close(); } catch {} }}
           onSave={async () => { cropSelection(); try { await getCurrentWindow().close(); } catch {} }}
           onCancel={handleCancel}

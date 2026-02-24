@@ -35,10 +35,18 @@ export default function SelectionToolbar({
   onCopy, onSave, onCancel,
 }: SelectionToolbarProps) {
   const gap = 8;
+  const dockHeight = 90; // Reserve space for macOS Dock
   let left = selection.x + selection.width / 2 - 180;
   let top = selection.y + selection.height + gap;
 
-  if (top + 80 > window.innerHeight - 10) top = selection.y - 80 - gap;
+  // If toolbar would be hidden by Dock, place it above selection or inside
+  if (top + 80 > window.innerHeight - dockHeight) {
+    top = selection.y - 80 - gap;
+    if (top < 10) {
+      // If no room above either, place inside selection at bottom
+      top = selection.y + selection.height - 80 - gap;
+    }
+  }
   if (left + 360 > window.innerWidth - 10) left = window.innerWidth - 370;
   if (left < 10) left = 10;
   if (top < 10) top = 10;
