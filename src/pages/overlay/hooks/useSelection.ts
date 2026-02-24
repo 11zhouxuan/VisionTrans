@@ -211,8 +211,7 @@ export function useSelection(
       startPoint.current = { x, y };
       redraw();
     } else {
-      // Just moving mouse - update cursor and redraw for magnifier
-      redraw();
+      // Just moving mouse - only update cursor, don't redraw (preserves marks)
     }
 
     // Update cursor based on handle hover

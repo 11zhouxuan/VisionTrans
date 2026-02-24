@@ -16,10 +16,49 @@ export default function OverlayPage() {
   const [brushSize, setBrushSize] = useState(12);
   const [brushColor, setBrushColor] = useState('rgba(255, 230, 0, 0.35)');
 
-  // Offscreen canvas for persistent marks (brush strokes + rect marks)
+  // Offscreen canvas for persistent marks
   const markCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isMarking = useRef(false);
   const markStart = useRef({ x: 0, y: 0 });
+
+  // Undo/Redo history (snapshots of mark canvas)
+  const undoStack = useRef<ImageData[]>([]);
+  const redoStack = useRef<ImageData[]>([]);
+
+  const saveSnapshot = useCallback(() => {
+    if (!markCanvasRef.current) return;
+    const ctx = markCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+    const snapshot = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
+    undoStack.current.push(snapshot);
+    redoStack.current = []; // Clear redo on new action
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (!markCanvasRef.current || undoStack.current.length === 0) return;
+    const ctx = markCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+    // Save current state to redo
+    const current = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
+    redoStack.current.push(current);
+    // Restore previous state
+    const prev = undoStack.current.pop()!;
+    ctx.putImageData(prev, 0, 0);
+    redraw();
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (!markCanvasRef.current || redoStack.current.length === 0) return;
+    const ctx = markCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+    // Save current to undo
+    const current = ctx.getImageData(0, 0, markCanvasRef.current.width, markCanvasRef.current.height);
+    undoStack.current.push(current);
+    // Restore redo state
+    const next = redoStack.current.pop()!;
+    ctx.putImageData(next, 0, 0);
+    redraw();
+  }, []);
 
   // Fetch screenshot data
   useEffect(() => {
@@ -46,7 +85,6 @@ export default function OverlayPage() {
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.scale(dpr, dpr);
 
-    // Create offscreen mark canvas
     const markCanvas = document.createElement('canvas');
     markCanvas.width = canvas.width;
     markCanvas.height = canvas.height;
@@ -59,7 +97,6 @@ export default function OverlayPage() {
     img.src = `data:image/png;base64,${screenshotBase64}`;
   }, [screenshotBase64]);
 
-  // Selection hook
   const {
     selection, isDrawing, isResizing,
     onMouseDown, onMouseMove, onMouseUp,
@@ -69,7 +106,6 @@ export default function OverlayPage() {
   // Enhanced redraw that overlays marks
   const redraw = useCallback(() => {
     baseRedraw();
-    // Overlay marks from offscreen canvas
     if (markCanvasRef.current && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
@@ -81,17 +117,14 @@ export default function OverlayPage() {
     }
   }, [baseRedraw]);
 
-  // Set initial selection
   useEffect(() => {
     if (bgImage) {
       const padding = 0.1;
       const w = window.innerWidth;
       const h = window.innerHeight;
       setInitialSelection({
-        x: Math.round(w * padding),
-        y: Math.round(h * padding),
-        width: Math.round(w * (1 - 2 * padding)),
-        height: Math.round(h * (1 - 2 * padding)),
+        x: Math.round(w * padding), y: Math.round(h * padding),
+        width: Math.round(w * (1 - 2 * padding)), height: Math.round(h * (1 - 2 * padding)),
       });
       redraw();
     }
@@ -99,28 +132,25 @@ export default function OverlayPage() {
 
   const showToolbar = selection && selection.width > MIN_CROP_SIZE && selection.height > MIN_CROP_SIZE && !isDrawing && !isResizing;
 
-  // Mark tool handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (markTool !== 'none' && selection) {
       const x = e.nativeEvent.offsetX;
       const y = e.nativeEvent.offsetY;
       if (x >= selection.x && x <= selection.x + selection.width &&
           y >= selection.y && y <= selection.y + selection.height) {
+        // Save snapshot before marking
+        saveSnapshot();
         isMarking.current = true;
         markStart.current = { x, y };
         if (markTool === 'brush') {
-          // Start brush stroke on mark canvas
           const markCtx = markCanvasRef.current?.getContext('2d');
-          if (markCtx) {
-            markCtx.beginPath();
-            markCtx.moveTo(x, y);
-          }
+          if (markCtx) { markCtx.beginPath(); markCtx.moveTo(x, y); }
         }
         return;
       }
     }
     onMouseDown(e);
-  }, [markTool, selection, onMouseDown]);
+  }, [markTool, selection, onMouseDown, saveSnapshot]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isMarking.current && markTool !== 'none') {
@@ -139,8 +169,9 @@ export default function OverlayPage() {
           markCtx.beginPath();
           markCtx.moveTo(x, y);
         }
+        redraw();
       } else if (markTool === 'rect') {
-        // Preview rect on main canvas (will be finalized on mouseUp)
+        // Preview rect on main canvas
         redraw();
         const ctx = canvasRef.current?.getContext('2d');
         if (ctx) {
@@ -148,16 +179,12 @@ export default function OverlayPage() {
           const ry = Math.min(markStart.current.y, y);
           const rw = Math.abs(x - markStart.current.x);
           const rh = Math.abs(y - markStart.current.y);
-          ctx.strokeStyle = brushColor;
+          ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
           ctx.lineWidth = 2;
-          ctx.fillStyle = brushColor;
-          ctx.fillRect(rx, ry, rw, rh);
+          ctx.setLineDash([]);
           ctx.strokeRect(rx, ry, rw, rh);
         }
-        return;
       }
-      // Redraw to show brush marks
-      redraw();
       return;
     }
     onMouseMove(e);
@@ -166,7 +193,6 @@ export default function OverlayPage() {
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (isMarking.current && markTool !== 'none') {
       if (markTool === 'rect') {
-        // Finalize rect on mark canvas
         const x = e.nativeEvent.offsetX;
         const y = e.nativeEvent.offsetY;
         const markCtx = markCanvasRef.current?.getContext('2d');
@@ -175,10 +201,10 @@ export default function OverlayPage() {
           const ry = Math.min(markStart.current.y, y);
           const rw = Math.abs(x - markStart.current.x);
           const rh = Math.abs(y - markStart.current.y);
-          markCtx.strokeStyle = brushColor;
+          // Border only, red color
+          markCtx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
           markCtx.lineWidth = 2;
-          markCtx.fillStyle = brushColor;
-          markCtx.fillRect(rx, ry, rw, rh);
+          markCtx.setLineDash([]);
           markCtx.strokeRect(rx, ry, rw, rh);
         }
       }
@@ -187,37 +213,20 @@ export default function OverlayPage() {
       return;
     }
     onMouseUp();
-  }, [markTool, brushColor, onMouseUp, redraw]);
+  }, [markTool, onMouseUp, redraw]);
 
-  // Crop selection
   const cropSelection = useCallback((): string | null => {
     if (!selection || !bgImage) return null;
     const dpr = window.devicePixelRatio || 1;
-
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = selection.width * dpr;
     tempCanvas.height = selection.height * dpr;
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return null;
-
-    // Draw original image
-    tempCtx.drawImage(
-      bgImage,
-      selection.x * dpr, selection.y * dpr,
-      selection.width * dpr, selection.height * dpr,
-      0, 0, selection.width * dpr, selection.height * dpr
-    );
-
-    // Overlay marks
+    tempCtx.drawImage(bgImage, selection.x * dpr, selection.y * dpr, selection.width * dpr, selection.height * dpr, 0, 0, selection.width * dpr, selection.height * dpr);
     if (markCanvasRef.current) {
-      tempCtx.drawImage(
-        markCanvasRef.current,
-        selection.x * dpr, selection.y * dpr,
-        selection.width * dpr, selection.height * dpr,
-        0, 0, selection.width * dpr, selection.height * dpr
-      );
+      tempCtx.drawImage(markCanvasRef.current, selection.x * dpr, selection.y * dpr, selection.width * dpr, selection.height * dpr, 0, 0, selection.width * dpr, selection.height * dpr);
     }
-
     return tempCanvas.toDataURL('image/png').split(',')[1];
   }, [selection, bgImage]);
 
@@ -241,10 +250,12 @@ export default function OverlayPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') handleCancel();
       else if (e.key === 'Enter' && showToolbar) handleTranslate();
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) { e.preventDefault(); handleRedo(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleCancel, handleTranslate, showToolbar]);
+  }, [handleCancel, handleTranslate, showToolbar, handleUndo, handleRedo]);
 
   const getCursor = () => {
     if (markTool === 'brush') return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${brushSize}' height='${brushSize}'%3E%3Ccircle cx='${brushSize/2}' cy='${brushSize/2}' r='${brushSize/2-1}' fill='rgba(255,230,0,0.3)' stroke='%23fbbf24' stroke-width='1'/%3E%3C/svg%3E") ${brushSize/2} ${brushSize/2}, crosshair`;
@@ -260,14 +271,11 @@ export default function OverlayPage() {
 
       {showToolbar && selection && (
         <SelectionToolbar
-          selection={selection}
-          markTool={markTool}
-          brushSize={brushSize}
-          brushColor={brushColor}
-          onSetMarkTool={setMarkTool}
-          onSetBrushSize={setBrushSize}
-          onSetBrushColor={setBrushColor}
+          selection={selection} markTool={markTool} brushSize={brushSize} brushColor={brushColor}
+          onSetMarkTool={setMarkTool} onSetBrushSize={setBrushSize} onSetBrushColor={setBrushColor}
           onTranslate={handleTranslate}
+          onUndo={handleUndo} onRedo={handleRedo}
+          canUndo={undoStack.current.length > 0} canRedo={redoStack.current.length > 0}
           onCopy={async () => { cropSelection(); try { await getCurrentWindow().close(); } catch {} }}
           onSave={async () => { cropSelection(); try { await getCurrentWindow().close(); } catch {} }}
           onCancel={handleCancel}
