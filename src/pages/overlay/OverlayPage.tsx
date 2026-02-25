@@ -343,8 +343,45 @@ export default function OverlayPage() {
           onTranslate={handleTranslate}
           onUndo={handleUndo} onRedo={handleRedo}
           canUndo={undoCount > 0} canRedo={redoCount > 0}
-          onCopy={async () => { cropSelection(); try { await getCurrentWindow().close(); } catch {} }}
-          onSave={async () => { cropSelection(); try { await getCurrentWindow().close(); } catch {} }}
+          onCopy={async () => {
+            const base64 = cropSelection();
+            if (base64) {
+              try {
+                // Write image to clipboard using Tauri clipboard plugin
+                const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
+                // Convert base64 to Uint8Array for clipboard
+                const binaryStr = atob(base64);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                await writeImage(bytes);
+              } catch (err) {
+                console.error('Failed to copy to clipboard:', err);
+                // Fallback: copy as data URL text
+                try {
+                  const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+                  await writeText(`data:image/png;base64,${base64}`);
+                } catch {}
+              }
+            }
+            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
+          }}
+          onSave={async () => {
+            const base64 = cropSelection();
+            if (base64) {
+              try {
+                // Trigger download via a temporary link
+                const link = document.createElement('a');
+                link.href = `data:image/png;base64,${base64}`;
+                link.download = `visiontrans-${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              } catch (err) {
+                console.error('Failed to save image:', err);
+              }
+            }
+            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
+          }}
           onCancel={handleCancel}
         />
       )}
