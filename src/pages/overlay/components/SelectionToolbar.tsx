@@ -1,7 +1,7 @@
-import { Languages, Copy, Download, X, Paintbrush, Square, Minus, Plus, Undo2, Redo2 } from 'lucide-react';
+import { Languages, Copy, Download, X, Paintbrush, Square, MoveUpRight, Minus, Plus, Undo2, Redo2 } from 'lucide-react';
 import type { SelectionRect } from '../hooks/useSelection';
 
-type MarkTool = 'none' | 'brush' | 'rect';
+type MarkTool = 'none' | 'brush' | 'rect' | 'arrow';
 
 interface SelectionToolbarProps {
   selection: SelectionRect;
@@ -74,6 +74,13 @@ export default function SelectionToolbar({
         className={`p-1.5 rounded transition-colors ${markTool === 'rect' ? 'bg-red-500/30 text-red-300' : 'text-gray-300 hover:text-white hover:bg-gray-700/50'}`}
         title="矩形">
         <Square className="w-3.5 h-3.5" />
+      </button>
+
+      {/* Arrow */}
+      <button onClick={() => onSetMarkTool(markTool === 'arrow' ? 'none' : 'arrow')}
+        className={`p-1.5 rounded transition-colors ${markTool === 'arrow' ? 'bg-orange-500/30 text-orange-300' : 'text-gray-300 hover:text-white hover:bg-gray-700/50'}`}
+        title="箭头">
+        <MoveUpRight className="w-3.5 h-3.5" />
       </button>
 
       {/* Brush settings inline (when tool active) */}

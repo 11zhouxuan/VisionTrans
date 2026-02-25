@@ -6,15 +6,15 @@ import SelectionToolbar from './components/SelectionToolbar';
 import type { ScreenshotData } from '../../types/translate';
 import { MIN_CROP_SIZE } from '../../lib/constants';
 
-type MarkTool = 'none' | 'brush' | 'rect';
+type MarkTool = 'none' | 'brush' | 'rect' | 'arrow';
 
 export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
   const [markTool, setMarkTool] = useState<MarkTool>('rect');
-  const [brushSize, setBrushSize] = useState(12);
-  const [brushColor, setBrushColor] = useState('rgba(255, 230, 0, 0.35)');
+  const [brushSize, setBrushSize] = useState(4);
+  const [brushColor, setBrushColor] = useState('rgba(255, 50, 50, 0.8)');
 
   // Offscreen canvas for persistent marks
   const markCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -197,6 +197,13 @@ export default function OverlayPage() {
           ctx.setLineDash([]);
           ctx.strokeRect(rx, ry, rw, rh);
         }
+      } else if (markTool === 'arrow') {
+        // Preview arrow on main canvas
+        redraw();
+        const ctx = canvasRef.current?.getContext('2d');
+        if (ctx) {
+          drawArrow(ctx, markStart.current.x, markStart.current.y, x, y, 'rgba(255, 50, 50, 0.8)', 2);
+        }
       }
       return;
     }
@@ -205,9 +212,9 @@ export default function OverlayPage() {
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (isMarking.current && markTool !== 'none') {
+      const x = e.nativeEvent.offsetX;
+      const y = e.nativeEvent.offsetY;
       if (markTool === 'rect') {
-        const x = e.nativeEvent.offsetX;
-        const y = e.nativeEvent.offsetY;
         const markCtx = markCanvasRef.current?.getContext('2d');
         if (markCtx) {
           const rx = Math.min(markStart.current.x, x);
@@ -219,6 +226,11 @@ export default function OverlayPage() {
           markCtx.lineWidth = 2;
           markCtx.setLineDash([]);
           markCtx.strokeRect(rx, ry, rw, rh);
+        }
+      } else if (markTool === 'arrow') {
+        const markCtx = markCanvasRef.current?.getContext('2d');
+        if (markCtx) {
+          drawArrow(markCtx, markStart.current.x, markStart.current.y, x, y, 'rgba(255, 50, 50, 0.8)', 2);
         }
       }
       isMarking.current = false;
@@ -269,8 +281,33 @@ export default function OverlayPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleCancel, handleTranslate, showToolbar, handleUndo, handleRedo]);
 
+  // Helper: draw an arrow from (x1,y1) to (x2,y2)
+  const drawArrow = (ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, lineWidth: number) => {
+    const headLen = 12;
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([]);
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Arrowhead
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+  };
+
   const getCursor = () => {
-    if (markTool === 'brush') return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${brushSize}' height='${brushSize}'%3E%3Ccircle cx='${brushSize/2}' cy='${brushSize/2}' r='${brushSize/2-1}' fill='rgba(255,230,0,0.3)' stroke='%23fbbf24' stroke-width='1'/%3E%3C/svg%3E") ${brushSize/2} ${brushSize/2}, crosshair`;
+    if (markTool === 'brush') return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${brushSize}' height='${brushSize}'%3E%3Ccircle cx='${brushSize/2}' cy='${brushSize/2}' r='${brushSize/2-1}' fill='rgba(255,50,50,0.3)' stroke='%23ef4444' stroke-width='1'/%3E%3C/svg%3E") ${brushSize/2} ${brushSize/2}, crosshair`;
     if (markTool === 'rect') return 'crosshair';
     return 'crosshair';
   };
