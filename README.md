@@ -103,17 +103,14 @@ Access settings via:
 
 ---
 
-## 💰 Cost
+## 🤖 Supported Models
 
-Each translation costs approximately **$0.005 – $0.02** in API fees, depending on image size and model:
+VisionTrans works with any **OpenAI-compatible API**, including:
 
-| Model | Cost per Translation |
-|-------|---------------------|
-| GPT-4o | ~$0.005 – $0.02 |
-| Claude 3.5 Sonnet | ~$0.005 – $0.015 |
-| Gemini Pro Vision | ~$0.001 – $0.005 |
+- **Cloud APIs**: GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, etc.
+- **Self-hosted**: [Ollama](https://ollama.com/), [vLLM](https://github.com/vllm-project/vllm), [LocalAI](https://localai.io/), or any OpenAI-compatible server
 
-You use your own API key — no subscription, no middleman.
+> 💡 Use your own API key with cloud providers, or point the API Endpoint to your local Ollama instance (e.g., `http://localhost:11434/v1`) — completely free and private.
 
 ---
 

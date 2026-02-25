@@ -103,17 +103,14 @@
 
 ---
 
-## 💰 费用说明
+## 🤖 支持的模型
 
-每次翻译大约消耗 **$0.005 – $0.02** 的 API 费用，取决于图片大小和所选模型：
+VisionTrans 兼容任何 **OpenAI 格式的 API**，包括：
 
-| 模型 | 单次翻译费用 |
-|------|-------------|
-| GPT-4o | ~$0.005 – $0.02 |
-| Claude 3.5 Sonnet | ~$0.005 – $0.015 |
-| Gemini Pro Vision | ~$0.001 – $0.005 |
+- **云端 API**：GPT-4o、Claude 3.5 Sonnet、Gemini Pro Vision 等
+- **本地自部署**：[Ollama](https://ollama.com/)、[vLLM](https://github.com/vllm-project/vllm)、[LocalAI](https://localai.io/)，或任何 OpenAI 兼容服务
 
-使用你自己的 API Key — 没有订阅费，没有中间商。
+> 💡 你可以使用云端 API Key，也可以将 API Endpoint 指向本地 Ollama 实例（如 `http://localhost:11434/v1`）——完全免费、完全私密。
 
 ---
 
