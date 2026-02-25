@@ -50,7 +50,9 @@ export default function SelectionToolbar({
 
   return (
     <div className="fixed z-50 flex items-center gap-1 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1.5 py-1 shadow-xl border border-gray-700/50"
-      style={{ left, top }}>
+      style={{ left, top }}
+      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+      onMouseDown={(e) => e.preventDefault() /* prevent focus steal */}>
       {/* Translate */}
       <button onClick={onTranslate}
         className="flex items-center gap-1 px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-md transition-colors"

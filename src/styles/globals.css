@@ -16,6 +16,12 @@ html {
   background: transparent;
 }
 
+/* Hide macOS traffic light buttons on result window */
+.hide-traffic-lights .titlebar-button,
+.hide-traffic-lights [class*="titlebar"] {
+  display: none !important;
+}
+
 /* Prevent text selection during overlay interaction */
 .no-select {
   user-select: none;

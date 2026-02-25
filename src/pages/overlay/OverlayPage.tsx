@@ -12,7 +12,7 @@ export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
-  const [markTool, setMarkTool] = useState<MarkTool>('none');
+  const [markTool, setMarkTool] = useState<MarkTool>('rect');
   const [brushSize, setBrushSize] = useState(12);
   const [brushColor, setBrushColor] = useState('rgba(255, 230, 0, 0.35)');
 

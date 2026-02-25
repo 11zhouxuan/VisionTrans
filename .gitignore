@@ -1,6 +1,121 @@
+# ===========================
+# Dependencies
+# ===========================
 node_modules/
+.pnpm-store/
+
+# ===========================
+# Build outputs
+# ===========================
 dist/
 src-tauri/target/
 src-tauri/gen/schemas/
-*.log
+*.app
+*.dmg
+*.msi
+*.exe
+*.nsis
+*.deb
+*.rpm
+*.AppImage
+*.app.tar.gz
+*.app.tar.gz.sig
+
+# ===========================
+# AWS Credentials & Secrets
+# ===========================
+.aws/
+credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.cert
+*.crt
+*.csr
+
+# ===========================
+# Environment & Secrets
+# ===========================
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.staging
+*.secret
+*.secrets
+secret.json
+secrets.json
+
+# ===========================
+# API Keys & Tokens
+# ===========================
+# Never commit files that may contain API keys
+config.local.json
+*.token
+
+# ===========================
+# Tauri Signing Keys
+# ===========================
+tauri-signing-private-key
+*.tauri-key
+*.tauri-key.pub
+
+# ===========================
+# OS generated files
+# ===========================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ===========================
+# IDE & Editor
+# ===========================
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.temp
+
+# ===========================
+# Debug & Logs
+# ===========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+debug.log
+
+# ===========================
+# macOS specific
+# ===========================
+*.dSYM/
+*.dSYM.zip
+
+# ===========================
+# Testing & Coverage
+# ===========================
+coverage/
+*.lcov
+.nyc_output/
+
+# ===========================
+# Database files
+# ===========================
+*.sqlite
+*.sqlite3
+*.db

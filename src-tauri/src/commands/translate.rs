@@ -54,7 +54,17 @@ pub async fn start_translation(
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         match llm_client::translate(&config, &image_base64).await {
-            Ok(result) => {
+            Ok(mut result) => {
+                eprintln!("[llm] Translation result:\n{}", &result.translation);
+                // Check if saveScreenshot is enabled, attach image to result
+                let save_screenshot = app_handle.store("config.json")
+                    .ok()
+                    .and_then(|s| s.get("saveScreenshot"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                if save_screenshot {
+                    result.image_base64 = Some(image_base64.clone());
+                }
                 let _ = app_handle.emit_to("result", "translation-result", result);
             }
             Err(err) => {
@@ -196,8 +206,8 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
 fn create_result_window(app: &AppHandle, position: &Position) -> Result<(), AppError> {
     use tauri::WebviewWindowBuilder;
 
-    let card_width = 380.0;
-    let card_height = 250.0;
+    let card_width = 400.0;
+    let card_height = 120.0;
     let margin = 12.0;
 
     let mut x = position.x + margin;
@@ -222,10 +232,14 @@ fn create_result_window(app: &AppHandle, position: &Position) -> Result<(), AppE
     }
 
     let _window = WebviewWindowBuilder::new(app, "result", tauri::WebviewUrl::App("/".into()))
-        .title("VisionTrans Result")
+        .title("")
         .inner_size(card_width, card_height)
         .position(x, y)
-        .decorations(false)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .closable(false)
+        .minimizable(false)
+        .maximizable(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)

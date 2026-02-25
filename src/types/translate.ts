@@ -2,6 +2,7 @@ export interface TranslateResult {
   translation: string;
   sourceLanguage: string;
   targetLanguage: string;
+  imageBase64?: string;
 }
 
 export interface TranslateError {

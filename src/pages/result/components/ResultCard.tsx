@@ -1,140 +1,318 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalSize } from '@tauri-apps/api/dpi';
 import { listen } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
 import { RefreshCw, Copy, X, Check, Loader2, AlertCircle, Settings } from 'lucide-react';
 import type { TranslateResult, TranslateError } from '../../../types/translate';
-import { CARD_WIDTH, CARD_MARGIN } from '../../../lib/constants';
+import { saveWordToWordbook } from '../../../lib/tauri-api';
+
+const CARD_WIDTH = 400;
+const MAX_CARD_HEIGHT = 500;
+
+// ==================== XML Parsing ====================
+
+interface ParsedTranslation {
+  type: 'word' | 'phrase' | 'error' | 'raw';
+  source: string;       // Original selected text
+  context?: string;     // Contextual meaning from the image
+  // Word fields
+  phonetic?: string;
+  definitions?: Array<{ pos: string; text: string }>;
+  examples?: Array<{ en: string; target: string }>;
+  // Phrase fields
+  target?: string;      // Translation
+  grammar?: Array<{ name: string; text: string }>;
+  vocabulary?: Array<{ pos: string; text: string }>;
+  // Error
+  error?: string;
+  // Raw fallback
+  rawText?: string;
+}
+
+function parseXmlTranslation(text: string): ParsedTranslation {
+  // Strip markdown code fences if present
+  let xml = text.trim();
+  if (xml.startsWith('```')) {
+    xml = xml.replace(/^```(?:xml)?\n?/, '').replace(/\n?```$/, '').trim();
+  }
+
+  // Try to extract <result>...</result>
+  const resultMatch = xml.match(/<result>([\s\S]*)<\/result>/);
+  if (!resultMatch) {
+    // Fallback: not XML format
+    return { type: 'raw', source: text.substring(0, 80), rawText: text };
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+
+    // Check for parse errors
+    const parseError = doc.querySelector('parsererror');
+    if (parseError) {
+      return { type: 'raw', source: text.substring(0, 80), rawText: text };
+    }
+
+    // Check for error
+    const errorEl = doc.querySelector('error');
+    if (errorEl) {
+      return { type: 'error', source: '', error: errorEl.textContent || '未知错误' };
+    }
+
+    const translationEl = doc.querySelector('translation');
+    if (!translationEl) {
+      return { type: 'raw', source: text.substring(0, 80), rawText: text };
+    }
+
+    const type = translationEl.getAttribute('type') as 'word' | 'phrase' || 'phrase';
+    const source = doc.querySelector('source')?.textContent?.trim() || '';
+
+    if (type === 'word') {
+      const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
+      const defEls = doc.querySelectorAll('def');
+      const definitions = Array.from(defEls).map(el => ({
+        pos: el.getAttribute('pos') || '',
+        text: el.textContent?.trim() || '',
+      }));
+      const context = doc.querySelector('context')?.textContent?.trim();
+      const exampleEls = doc.querySelectorAll('example');
+      const examples = Array.from(exampleEls).map(el => ({
+        en: el.querySelector('en')?.textContent?.trim() || '',
+        target: el.querySelector('target')?.textContent?.trim() || '',
+      }));
+      return { type: 'word', source, phonetic, definitions, context, examples };
+    } else {
+      const context = doc.querySelector('context')?.textContent?.trim();
+      const target = doc.querySelector('translation > target')?.textContent?.trim();
+      const patternEls = doc.querySelectorAll('pattern');
+      const grammar = Array.from(patternEls).map(el => ({
+        name: el.getAttribute('name') || '',
+        text: el.textContent?.trim() || '',
+      }));
+      const wordEls = doc.querySelectorAll('vocabulary > word');
+      const vocabulary = Array.from(wordEls).map(el => ({
+        pos: el.getAttribute('pos') || '',
+        text: el.textContent?.trim() || '',
+      }));
+      return { type: 'phrase', source, target, context, grammar, vocabulary };
+    }
+  } catch {
+    return { type: 'raw', source: text.substring(0, 80), rawText: text };
+  }
+}
+
+// ==================== Rendering ====================
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
+      {children}
+    </span>
+  );
+}
+
+function WordResult({ data }: { data: ParsedTranslation }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <span className="text-base font-bold text-gray-900">{data.source}</span>
+        {data.phonetic && <span className="ml-2 text-xs text-gray-400">{data.phonetic}</span>}
+      </div>
+      {data.definitions && data.definitions.length > 0 && (
+        <div>
+          <SectionLabel>释义</SectionLabel>
+          <div className="mt-1 text-sm text-gray-700">
+            {data.definitions.map((d, i) => (
+              <div key={i}>{d.pos && <span className="text-gray-500">{d.pos}. </span>}{d.text}</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {data.context && (
+        <div>
+          <SectionLabel>📌 上下文含义</SectionLabel>
+          <div className="mt-1 text-sm text-indigo-700 bg-indigo-50 px-2 py-1.5 rounded">{data.context}</div>
+        </div>
+      )}
+      {data.examples && data.examples.length > 0 && (
+        <div>
+          <SectionLabel>例句</SectionLabel>
+          <div className="mt-1 text-sm text-gray-500">
+            {data.examples.map((ex, i) => (
+              <div key={i} className="mb-1">
+                <div>• EN: {ex.en}</div>
+                <div>• {ex.target}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhraseResult({ data }: { data: ParsedTranslation }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <SectionLabel>原文</SectionLabel>
+        <div className="mt-1 text-sm text-gray-500">{data.source}</div>
+      </div>
+      {data.target && (
+        <div>
+          <SectionLabel>精准翻译</SectionLabel>
+          <div className="mt-1 text-sm text-gray-800 font-medium">{data.target}</div>
+        </div>
+      )}
+      {data.context && (
+        <div>
+          <SectionLabel>📌 上下文含义</SectionLabel>
+          <div className="mt-1 text-sm text-indigo-700 bg-indigo-50 px-2 py-1.5 rounded">{data.context}</div>
+        </div>
+      )}
+      {data.grammar && data.grammar.length > 0 && (
+        <div>
+          <SectionLabel>核心句式</SectionLabel>
+          <div className="mt-1 text-sm text-gray-700">
+            {data.grammar.map((g, i) => (
+              <div key={i}>{g.name && <span className="font-medium">{g.name}: </span>}{g.text}</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {data.vocabulary && data.vocabulary.length > 0 && (
+        <div>
+          <SectionLabel>重点词汇</SectionLabel>
+          <div className="mt-1 text-sm text-gray-700">
+            {data.vocabulary.map((v, i) => (
+              <div key={i}>{v.pos && <span className="text-gray-400">({v.pos}) </span>}{v.text}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TranslationContent({ data }: { data: ParsedTranslation }) {
+  switch (data.type) {
+    case 'word':
+      return <WordResult data={data} />;
+    case 'phrase':
+      return <PhraseResult data={data} />;
+    case 'error':
+      return <p className="text-gray-500 text-sm">{data.error}</p>;
+    case 'raw':
+    default:
+      return <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">{data.rawText}</p>;
+  }
+}
+
+// ==================== Main Component ====================
 
 export default function ResultCard() {
   const [result, setResult] = useState<TranslateResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<TranslateError | null>(null);
   const [copied, setCopied] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const isDragging = useRef(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  // Listen for translation result event
+  const parsed = useMemo<ParsedTranslation | null>(() => {
+    if (!result?.translation) return null;
+    return parseXmlTranslation(result.translation);
+  }, [result]);
+
+  // Auto-resize window to fit content
+  const resizeWindowToFit = useCallback(async () => {
+    if (!cardRef.current) return;
+    await new Promise(r => setTimeout(r, 50));
+    const contentHeight = cardRef.current.scrollHeight;
+    const finalHeight = Math.min(contentHeight + 2, MAX_CARD_HEIGHT);
+    try {
+      await getCurrentWindow().setSize(new LogicalSize(CARD_WIDTH, finalHeight));
+    } catch (err) {
+      console.error('Failed to resize window:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const setupListeners = async () => {
       const unlistenResult = await listen<TranslateResult>('translation-result', (event) => {
+        console.log('[llm] Raw translation result:', event.payload.translation);
         setResult(event.payload);
         setLoading(false);
         setError(null);
       });
-
       const unlistenError = await listen<TranslateError>('translation-error', (event) => {
         setError(event.payload);
         setLoading(false);
       });
-
-      return () => {
-        unlistenResult();
-        unlistenError();
-      };
+      return () => { unlistenResult(); unlistenError(); };
     };
-
     const cleanup = setupListeners();
-    return () => {
-      cleanup.then(fn => fn());
-    };
+    return () => { cleanup.then(fn => fn()); };
   }, []);
 
-  // Smart positioning: avoid screen edges
+  // Resize window when content changes
+  useEffect(() => { resizeWindowToFit(); }, [loading, result, error, resizeWindowToFit]);
+
+  // Auto-save to wordbook when result arrives
   useEffect(() => {
-    const initPosition = async () => {
-      try {
-        const win = getCurrentWindow();
-        const pos = await win.outerPosition();
-        setPosition({ x: pos.x, y: pos.y });
-      } catch {
-        // Default position
-        setPosition({ x: 100, y: 100 });
-      }
-    };
-    initPosition();
-  }, []);
+    if (result?.translation && parsed) {
+      const word = parsed.source || result.translation.substring(0, 80);
+      console.log('[wordbook] Auto-saving word:', word.substring(0, 50), 'has_image:', !!result.imageBase64);
+      saveWordToWordbook(word, result.translation, result.sourceLanguage, result.targetLanguage, result.imageBase64)
+        .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
+        .catch((err) => console.error('[wordbook] Auto-save failed:', err));
+    }
+  }, [result, parsed]);
 
-  // Copy to clipboard
   const handleCopy = useCallback(async () => {
     if (!result?.translation) return;
     try {
       await writeText(result.translation);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
+    } catch (err) { console.error('Failed to copy:', err); }
   }, [result]);
 
-  // Retry translation
   const handleRetry = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      await invoke('retry_translation');
-    } catch (err) {
-      console.error('Failed to retry:', err);
-    }
+    try { await invoke('retry_translation'); }
+    catch (err) { console.error('Failed to retry:', err); }
   }, []);
 
-  // Go to settings
   const handleGoToSettings = useCallback(async () => {
-    try {
-      await invoke('open_settings_window');
-      await getCurrentWindow().close();
-    } catch (err) {
-      console.error('Failed to open settings:', err);
-    }
+    try { await invoke('open_settings_window'); await getCurrentWindow().close(); }
+    catch (err) { console.error('Failed to open settings:', err); }
   }, []);
 
-  // Close on Esc
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        getCurrentWindow().close();
-      }
+      if (e.key === 'Escape') getCurrentWindow().close();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Drag handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragOffset.current = { x: e.clientX - position.x, y: e.clientY - position.y };
-  }, [position]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging.current) return;
-    setPosition({
-      x: e.clientX - dragOffset.current.x,
-      y: e.clientY - dragOffset.current.y,
-    });
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    isDragging.current = false;
-  }, []);
-
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95, y: 5 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.15 }}
-      className="bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
-      style={{ width: CARD_WIDTH, margin: CARD_MARGIN }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      ref={cardRef}
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.12 }}
+      className="bg-white flex flex-col overflow-hidden"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-1">
-        <div className="text-xs text-gray-400">
+      {/* Header - draggable region */}
+      <div
+        className="flex items-center justify-between px-4 pt-3 pb-1 cursor-grab active:cursor-grabbing"
+        data-tauri-drag-region
+      >
+        <div className="text-xs text-gray-400 pointer-events-none">
           {result ? `${result.sourceLanguage} → ${result.targetLanguage}` : '翻译中...'}
         </div>
         <button
@@ -146,10 +324,10 @@ export default function ResultCard() {
         </button>
       </div>
 
-      {/* Content */}
-      <div className="px-4 py-2 min-h-[60px]">
+      {/* Content - scrollable */}
+      <div className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: MAX_CARD_HEIGHT - 80 }}>
         {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 py-4">
+          <div className="flex items-center gap-2 text-gray-400 py-2">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="text-sm">正在翻译...</span>
           </div>
@@ -160,15 +338,14 @@ export default function ResultCard() {
               <span className="text-sm">{error.message}</span>
             </div>
             {error.action === 'settings' && (
-              <button
-                onClick={handleGoToSettings}
-                className="mt-2 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
-              >
-                <Settings className="w-3 h-3" />
-                前往设置
+              <button onClick={handleGoToSettings}
+                className="mt-2 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600">
+                <Settings className="w-3 h-3" />前往设置
               </button>
             )}
           </div>
+        ) : parsed ? (
+          <TranslationContent data={parsed} />
         ) : (
           <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
             {result?.translation}
@@ -177,26 +354,16 @@ export default function ResultCard() {
       </div>
 
       {/* Footer actions */}
-      <div className="flex justify-end gap-1 px-3 pb-3">
-        <button
-          onClick={handleRetry}
+      <div className="flex justify-end gap-1 px-3 pb-2 pt-1">
+        <button onClick={handleRetry}
           className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded hover:bg-gray-100"
-          title="重新翻译"
-          disabled={loading}
-        >
+          title="重新翻译" disabled={loading}>
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
-        <button
-          onClick={handleCopy}
+        <button onClick={handleCopy}
           className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded hover:bg-gray-100"
-          title="复制"
-          disabled={loading || !!error}
-        >
-          {copied ? (
-            <Check className="w-3.5 h-3.5 text-green-500" />
-          ) : (
-            <Copy className="w-3.5 h-3.5" />
-          )}
+          title="复制" disabled={loading || !!error}>
+          {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
     </motion.div>

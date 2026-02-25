@@ -1,0 +1,201 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            args: '--target x86_64-apple-darwin'
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing (optional)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Tauri updater signing (optional)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'VisionTrans ${{ github.ref_name }}'
+          releaseBody: |
+            ## VisionTrans ${{ github.ref_name }}
+            
+            AI-powered visual translation tool. Select any area on screen and get instant translations.
+            
+            ### Downloads
+            - **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3/M4 Macs
+            - **macOS (Intel)**: `.dmg` file for Intel Macs
+            - **Windows**: `.msi` installer or `.exe` (NSIS)
+            
+            ### First Time Setup
+            1. Download and install the app
+            2. macOS users: Grant Screen Recording permission when prompted
+            3. Configure your LLM API Key in Settings
+            4. Press `Option+Q` (macOS) or `Alt+Q` (Windows) to start translating!
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  # Security scan job (AWS git-secrets + custom checks)
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and run AWS git-secrets
+        run: |
+          echo "🔧 Installing git-secrets..."
+          git clone https://github.com/awslabs/git-secrets.git /tmp/git-secrets
+          cd /tmp/git-secrets && sudo make install
+          cd $GITHUB_WORKSPACE
+          
+          echo "🔧 Configuring git-secrets with AWS patterns..."
+          git secrets --install -f
+          git secrets --register-aws
+          
+          # Add custom prohibited patterns
+          git secrets --add 'AKIA[0-9A-Z]{16}'
+          git secrets --add 'sk-[a-zA-Z0-9]{20,}'
+          git secrets --add --allowed 'sk-xxx'
+          git secrets --add --allowed 'sk-your'
+          git secrets --add --allowed 'sk-xxxxxxxxxxxxxxxx'
+          git secrets --add 'BEGIN.*PRIVATE KEY'
+          
+          echo "🔍 Scanning repository with git-secrets..."
+          git secrets --scan
+          echo "✅ git-secrets scan passed"
+
+      - name: Check for hardcoded secrets (additional)
+        run: |
+          echo "🔍 Scanning for potential secrets and sensitive data..."
+          
+          FOUND_ISSUES=0
+          
+          # Check for AWS credentials
+          if grep -rn "AKIA[0-9A-Z]\{16\}" --include="*.ts" --include="*.tsx" --include="*.rs" --include="*.json" --include="*.js" --include="*.toml" . 2>/dev/null | grep -v node_modules | grep -v target; then
+            echo "❌ Found potential AWS Access Key ID"
+            FOUND_ISSUES=1
+          fi
+          
+          # Check for AWS secret keys
+          if grep -rn "aws_secret_access_key\|AWS_SECRET_ACCESS_KEY" --include="*.ts" --include="*.tsx" --include="*.rs" --include="*.json" --include="*.js" --include="*.toml" --include="*.env" . 2>/dev/null | grep -v node_modules | grep -v target; then
+            echo "❌ Found potential AWS Secret Key reference"
+            FOUND_ISSUES=1
+          fi
+          
+          # Check for private keys
+          if grep -rn "BEGIN.*PRIVATE KEY" --include="*.ts" --include="*.tsx" --include="*.rs" --include="*.json" --include="*.js" --include="*.pem" --include="*.key" . 2>/dev/null | grep -v node_modules | grep -v target; then
+            echo "❌ Found potential private key"
+            FOUND_ISSUES=1
+          fi
+          
+          # Check for hardcoded API keys (common patterns)
+          if grep -rn "sk-[a-zA-Z0-9]\{20,\}" --include="*.ts" --include="*.tsx" --include="*.rs" --include="*.json" --include="*.js" . 2>/dev/null | grep -v node_modules | grep -v target | grep -v "\.example" | grep -v "placeholder" | grep -v "sk-xxx" | grep -v "sk-your"; then
+            echo "❌ Found potential hardcoded OpenAI API key"
+            FOUND_ISSUES=1
+          fi
+          
+          # Check for .env files committed
+          if find . -name ".env" -o -name ".env.local" -o -name ".env.production" | grep -v node_modules | grep -v target | head -5 | grep .; then
+            echo "❌ Found .env files that should not be committed"
+            FOUND_ISSUES=1
+          fi
+          
+          # Check for certificate/key files
+          if find . \( -name "*.p12" -o -name "*.pfx" -o -name "*.keystore" -o -name "*.jks" \) | grep -v node_modules | grep -v target | head -5 | grep .; then
+            echo "❌ Found certificate/keystore files"
+            FOUND_ISSUES=1
+          fi
+          
+          # Check for database files
+          if find . \( -name "*.sqlite" -o -name "*.sqlite3" -o -name "*.db" \) | grep -v node_modules | grep -v target | head -5 | grep .; then
+            echo "⚠️  Found database files (review if intentional)"
+          fi
+          
+          if [ $FOUND_ISSUES -eq 0 ]; then
+            echo "✅ No secrets or sensitive data detected"
+          else
+            echo ""
+            echo "🚨 Security issues found! Please review and remove sensitive data before releasing."
+            exit 1
+          fi
+
+      - name: Check .gitignore coverage
+        run: |
+          echo "🔍 Verifying .gitignore covers sensitive patterns..."
+          
+          MISSING=0
+          
+          for pattern in ".env" "*.pem" "*.key" "*.p12" "*.pfx" ".aws/" "credentials" "*.dmg" "*.msi" "*.exe"; do
+            if ! grep -q "$pattern" .gitignore 2>/dev/null; then
+              echo "⚠️  Missing .gitignore pattern: $pattern"
+              MISSING=1
+            fi
+          done
+          
+          if [ $MISSING -eq 0 ]; then
+            echo "✅ .gitignore covers all recommended patterns"
+          else
+            echo ""
+            echo "⚠️  Some recommended patterns are missing from .gitignore"
+          fi

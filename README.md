@@ -1,98 +1,230 @@
-# VisionTrans - AI 视觉划词翻译工具
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="128" height="128" alt="VisionTrans Logo">
+</p>
 
-> 通过全局快捷键一键截屏 + 自由涂抹 + 多模态 LLM 视觉识别，实现对屏幕上任意元素的精准翻译。
+<h1 align="center">VisionTrans</h1>
 
-## ✨ 核心功能
+<p align="center">
+  <strong>AI-Powered Visual Translation — See It, Swipe It, Read It.</strong>
+</p>
 
-- **🎯 涂抹即翻译** - 用马克笔涂抹需要翻译的区域，松手即得翻译结果
-- **🖼️ 图片也能翻** - 图片、视频字幕、PDF 加密文档都能翻译
-- **⚡ 用完即走** - 不打断你的工作流，翻译结果悬浮卡片展示
-- **🔒 隐私安全** - 截图数据仅存在于内存中，用完即焚
+<p align="center">
+  <a href="https://github.com/nicekid1/VisionTrans/releases"><img src="https://img.shields.io/github/v/release/nicekid1/VisionTrans?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://github.com/nicekid1/VisionTrans/blob/main/LICENSE"><img src="https://img.shields.io/github/license/nicekid1/VisionTrans?style=flat-square" alt="License"></a>
+  <a href="https://github.com/nicekid1/VisionTrans/releases"><img src="https://img.shields.io/github/downloads/nicekid1/VisionTrans/total?style=flat-square&color=green" alt="Downloads"></a>
+</p>
 
-## 🛠️ 技术栈
+<p align="center">
+  <a href="README_CN.md">🇨🇳 中文文档</a>
+</p>
 
-- **核心框架**: Tauri v2
-- **后端**: Rust
-- **前端**: React + TypeScript + TailwindCSS
-- **AI**: OpenAI 兼容格式多模态 API
+---
 
-## 📋 系统要求
+## The Problem
 
-- macOS 11+ / Windows 10+ (64-bit)
+You're reading a PDF, watching a foreign video, or browsing a design with embedded text — and you **can't select the text**. Traditional translation tools are useless. You end up screenshotting, opening a translator, uploading the image, waiting... Your workflow is destroyed.
+
+## The Solution
+
+**VisionTrans** lets you press one hotkey, draw a rectangle on screen, and get an instant AI translation — powered by multimodal LLMs that **see and understand** the image context, not just OCR the text.
+
+> 🧠 Unlike traditional OCR → Translate pipelines, VisionTrans sends the image directly to GPT-4o / Claude / Gemini, which understands layout, context, and even artistic fonts.
+
+---
+
+## ✨ Features
+
+| | Feature | Description |
+|---|---------|-------------|
+| 🎯 | **Select & Translate** | Draw a rectangle on any screen content — images, videos, encrypted PDFs, anything |
+| 🧠 | **AI-Powered** | Multimodal LLMs understand context, layout, and visual cues for superior translations |
+| ⚡ | **Instant Workflow** | `Option+Q` → Select → Done. Result appears in a floating card. No app switching |
+| 🎨 | **Annotation Tools** | Pen & rectangle markup tools to highlight exactly what you want translated |
+| 🔒 | **Privacy First** | Screenshots exist only in memory — never written to disk. Only the cropped region is sent via HTTPS |
+| 🌍 | **Bilingual UI** | Full Chinese & English interface support |
+| 🖥️ | **Cross-Platform** | macOS (Apple Silicon + Intel) and Windows |
+
+---
+
+## 📸 Screenshots
+
+<!-- TODO: Add screenshots/GIFs here -->
+<!-- ![Screenshot](docs/screenshot.png) -->
+
+*Screenshots coming soon — download and try it yourself!*
+
+---
+
+## 🚀 Quick Start
+
+### 1. Download & Install
+
+Download the latest release from [GitHub Releases](https://github.com/nicekid1/VisionTrans/releases):
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | `VisionTrans_x.x.x_aarch64.dmg` |
+| macOS (Intel) | `VisionTrans_x.x.x_x64.dmg` |
+| Windows | `VisionTrans_x.x.x_x64-setup.exe` |
+
+### 2. Configure API Key
+
+On first launch, the onboarding wizard will guide you through:
+
+1. **Grant Permissions** — macOS requires Screen Recording permission
+2. **Enter API Key** — Supports any OpenAI-compatible API (GPT-4o, Claude, Gemini, etc.)
+3. **Set Hotkey** — Default: `Option+Q` (macOS) / `Alt+Q` (Windows)
+
+### 3. Start Translating!
+
+1. Press `Option+Q` (or your custom hotkey)
+2. Draw a rectangle around the text you want to translate
+3. Use pen/marker tools to annotate if needed
+4. Release — translation appears in a floating card within 1-3 seconds
+5. Press `Esc` or click elsewhere to dismiss
+
+---
+
+## ⚙️ Configuration
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| API Key | Your LLM API key | — |
+| API Endpoint | Custom API endpoint URL | `https://api.openai.com/v1` |
+| Model | Model ID (e.g., `gpt-4o`, `claude-3.5-sonnet`) | `gpt-4o` |
+| Target Language | Translation target language | Chinese |
+| Hotkey | Global shortcut to trigger capture | `Option+Q` / `Alt+Q` |
+| Proxy | HTTP/SOCKS5 proxy for API calls | None |
+
+Access settings via:
+- System tray icon → Settings
+- macOS menu bar → VisionTrans → Settings (`Cmd+,`)
+- Click the Dock icon
+
+---
+
+## 💰 Cost
+
+Each translation costs approximately **$0.005 – $0.02** in API fees, depending on image size and model:
+
+| Model | Cost per Translation |
+|-------|---------------------|
+| GPT-4o | ~$0.005 – $0.02 |
+| Claude 3.5 Sonnet | ~$0.005 – $0.015 |
+| Gemini Pro Vision | ~$0.001 – $0.005 |
+
+You use your own API key — no subscription, no middleman.
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | [Tauri v2](https://v2.tauri.app/) |
+| Backend | Rust (screenshot capture, hotkeys, LLM client, window management) |
+| Frontend | React + TypeScript + TailwindCSS |
+| AI | OpenAI-compatible multimodal API |
+| Icons | [Lucide](https://lucide.dev/) |
+| Animation | [Framer Motion](https://www.framer.com/motion/) |
+
+---
+
+## 🛠️ Development
+
+### Prerequisites
+
 - Node.js ≥ 18
 - pnpm ≥ 8
 - Rust ≥ 1.75
+- macOS: Xcode Command Line Tools
+- Windows: Visual Studio Build Tools 2022
 
-## 🚀 快速开始
-
-### 安装依赖
+### Setup
 
 ```bash
-# 安装前端依赖
+# Clone the repository
+git clone https://github.com/nicekid1/VisionTrans.git
+cd VisionTrans
+
+# Install frontend dependencies
 pnpm install
 
-# Rust 依赖会在首次构建时自动下载
-```
-
-### 开发模式
-
-```bash
+# Run in development mode (hot-reload)
 pnpm tauri dev
-```
 
-### 构建生产包
-
-```bash
+# Build production release
 pnpm tauri build
 ```
 
-## 📖 使用方法
-
-1. **唤醒**: 按下 `Option+Q` (macOS) 或 `Alt+Q` (Windows)
-2. **涂抹**: 用鼠标涂抹或框选需要翻译的区域
-3. **翻译**: 松开鼠标，等待 1-3 秒获得翻译结果
-4. **关闭**: 按 `Esc` 或点击其他区域关闭结果卡片
-
-## ⚙️ 配置
-
-首次启动会引导你完成以下配置：
-
-- **API Key**: 支持 OpenAI GPT-4o、Claude 3.5 Sonnet 等兼容 OpenAI 格式的 API
-- **API Endpoint**: 支持自定义 API 地址（方便使用代理或第三方中转服务）
-- **目标语言**: 中文（默认）/ 英文
-- **快捷键**: 可自定义全局快捷键
-- **代理**: 支持 HTTP/SOCKS5 代理
-
-## 💰 费用说明
-
-每次翻译约消耗 $0.005 - $0.02 API 费用（取决于图片大小和所选模型）。
-
-## 📁 项目结构
+### Project Structure
 
 ```
 VisionTrans/
-├── doc/                    # 文档
-├── src/                    # 前端 React 应用
-│   ├── pages/              # 页面组件（按窗口划分）
-│   │   ├── overlay/        # 遮罩画布页面
-│   │   ├── result/         # 翻译结果页面
-│   │   ├── settings/       # 设置页面
-│   │   └── onboarding/     # 首次启动引导
-│   ├── hooks/              # 全局共享 Hooks
-│   ├── lib/                # 工具库
-│   └── types/              # TypeScript 类型定义
-├── src-tauri/              # Rust 后端
+├── src/                    # React frontend
+│   ├── pages/
+│   │   ├── overlay/        # Screen capture & annotation canvas
+│   │   ├── result/         # Translation result floating card
+│   │   ├── settings/       # Settings page
+│   │   └── onboarding/     # First-launch wizard
+│   ├── hooks/              # Shared React hooks
+│   ├── lib/                # Utilities & Tauri API wrappers
+│   └── types/              # TypeScript type definitions
+├── src-tauri/              # Rust backend
 │   ├── src/
-│   │   ├── commands/       # Tauri IPC 命令
-│   │   ├── services/       # 业务逻辑服务
-│   │   ├── hotkey.rs       # 全局快捷键
-│   │   ├── tray.rs         # 系统托盘
-│   │   ├── state.rs        # 应用状态
-│   │   └── errors.rs       # 错误处理
-│   └── capabilities/       # Tauri v2 权限声明
-└── index.html              # Vite 入口
+│   │   ├── commands/       # Tauri IPC commands
+│   │   ├── services/       # Business logic (screenshot, LLM, permissions)
+│   │   ├── hotkey.rs       # Global shortcut management
+│   │   ├── tray.rs         # System tray
+│   │   └── state.rs        # App state management
+│   └── capabilities/       # Tauri v2 permission declarations
+├── scripts/                # Build & debug scripts
+└── doc/                    # PRD & technical design docs
 ```
+
+---
+
+## 🗺️ Changelog
+
+### v1.0 — MVP Release
+
+- ✅ Global hotkey screen capture (`Option+Q` / `Alt+Q`)
+- ✅ Rectangle selection with dark overlay mask
+- ✅ Pen & rectangle annotation tools (adjustable thickness & color)
+- ✅ Multimodal LLM translation (OpenAI-compatible API)
+- ✅ Floating result card with copy & retry
+- ✅ System tray with quick actions
+- ✅ macOS app menu integration (`Cmd+,` for Settings)
+- ✅ First-launch onboarding wizard
+- ✅ Bilingual UI (Chinese & English)
+- ✅ Proxy support (HTTP/SOCKS5)
+- ✅ Default 80% screen selection area
+- ✅ Undo/redo for annotations
+- ✅ One-click build & install script
+
+### Roadmap
+
+- 🔜 More target languages (Japanese, Korean, French, German, etc.)
+- 🔜 Translation history
+- 🔜 Auto-start on boot
+- 🔜 Custom prompt templates
+- 🔜 Vocabulary book / favorites
+- 🔜 Local OCR fallback for offline use
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
 
 ## 📄 License
 
-MIT
+[MIT](LICENSE)
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ using Tauri, Rust, and React</sub>
+</p>

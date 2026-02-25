@@ -33,6 +33,13 @@ pub fn run() {
             commands::window::close_overlay,
             commands::permission::check_permission,
             commands::permission::request_permission,
+            commands::wordbook::save_word_to_wordbook,
+            commands::wordbook::get_all_words,
+            commands::wordbook::toggle_star_word,
+            commands::wordbook::delete_word_from_wordbook,
+            commands::wordbook::open_wordbook_window,
+            commands::wordbook::get_default_wordbook_path,
+            commands::wordbook::open_wordbook_folder,
             hotkey::update_hotkey,
         ])
         .on_window_event(|_window, event| {

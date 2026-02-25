@@ -3,3 +3,4 @@ pub mod config;
 pub mod permission;
 pub mod translate;
 pub mod window;
+pub mod wordbook;

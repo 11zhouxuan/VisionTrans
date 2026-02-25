@@ -32,6 +32,9 @@ pub struct TranslateResult {
     pub source_language: String,
     #[serde(rename = "targetLanguage")]
     pub target_language: String,
+    /// The cropped image that was sent for translation (optional, for saving to wordbook)
+    #[serde(rename = "imageBase64", skip_serializing_if = "Option::is_none")]
+    pub image_base64: Option<String>,
 }
 
 // ===== OpenAI types =====
@@ -151,16 +154,55 @@ pub async fn translate(
     image_base64: &str,
 ) -> Result<TranslateResult, AppError> {
     let target_lang_name = match config.target_language.as_str() {
-        "zh" => "中文",
+        "zh" => "简体中文",
         "en" => "English",
-        _ => "中文",
+        _ => "简体中文",
     };
 
     let prompt = format!(
-        "识别图片中被高亮标记的文本内容，结合整体图像的上下文语境，\
-         将其翻译为{}。直接输出翻译结果，保持原意和专业词汇的准确性。\
-         如果图片中没有可识别的文本，请回复\"未检测到需要翻译的文本\"。",
-        target_lang_name
+        "图片中用户通过矩形框选、画笔涂抹或荧光笔标记选中了一段文本。\
+         请识别用户选中区域内的文本内容，结合整体图像的上下文语境，将其翻译为{target_lang}。\n\
+         如果图片中没有可识别的文本，请回复：<result><error>未检测到需要翻译的文本</error></result>\n\n\
+         请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容：\n\n\
+         **如果是单个单词（中间无空格，包括长复合词如 multidisciplinary），使用 type=\"word\"：**\n\
+         ```xml\n\
+         <result>\n\
+         <thinking>简短分析：确认选中文本是什么，判断是 word 还是 phrase（不超过3句话）</thinking>\n\
+         <translation type=\"word\">\n\
+         <source>选中的原始单词</source>\n\
+         <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
+         <definitions>\n\
+         <def pos=\"词性\">释义</def>\n\
+         </definitions>\n\
+         <context>结合图片上下文，该单词在此处的具体含义（一句话）</context>\n\
+         <examples>\n\
+         <example>\n\
+         <en>英文例句</en>\n\
+         <target>{target_lang}例句</target>\n\
+         </example>\n\
+         </examples>\n\
+         </translation>\n\
+         </result>\n\
+         ```\n\n\
+         **如果是短语或句子（包含空格的多个词），使用 type=\"phrase\"：**\n\
+         ```xml\n\
+         <result>\n\
+         <thinking>简短分析：确认选中文本是什么，判断是 word 还是 phrase（不超过3句话）</thinking>\n\
+         <translation type=\"phrase\">\n\
+         <source>选中的原始文本</source>\n\
+         <target>精准翻译</target>\n\
+         <context>结合图片上下文，该短语/句子在此处的具体含义（一句话）</context>\n\
+         <grammar>\n\
+         <pattern name=\"句式名\">解释</pattern>\n\
+         </grammar>\n\
+         <vocabulary>\n\
+         <word pos=\"词性\">单词: 释义</word>\n\
+         </vocabulary>\n\
+         </translation>\n\
+         </result>\n\
+         ```\n\n\
+         只输出 XML，不要输出其他任何内容。",
+        target_lang = target_lang_name
     );
 
     let translation = match config.provider.as_str() {
@@ -172,6 +214,7 @@ pub async fn translate(
         translation,
         source_language: "AUTO".to_string(),
         target_language: target_lang_name.to_string(),
+        image_base64: None,
     })
 }
 
@@ -217,7 +260,7 @@ async fn call_openai(
         .header("Authorization", format!("Bearer {}", config.api_key))
         .header("Content-Type", "application/json")
         .json(&request)
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .send()
         .await
         .map_err(AppError::from_reqwest)?;
@@ -324,7 +367,7 @@ async fn call_bedrock(
         .header("Authorization", format!("Bearer {}", config.bedrock_api_key))
         .header("Content-Type", "application/json")
         .json(&request)
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .send()
         .await
         .map_err(AppError::from_reqwest)?;

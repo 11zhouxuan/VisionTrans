@@ -4,6 +4,7 @@ import OverlayPage from './pages/overlay/OverlayPage';
 import ResultPage from './pages/result/ResultPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import OnboardingPage from './pages/onboarding/OnboardingPage';
+import WordbookPage from './pages/wordbook/WordbookPage';
 
 function App() {
   const [windowLabel, setWindowLabel] = useState<string>('');
@@ -22,6 +23,8 @@ function App() {
       return <SettingsPage />;
     case 'onboarding':
       return <OnboardingPage />;
+    case 'wordbook':
+      return <WordbookPage />;
     default:
       // main window - no UI rendered
       return null;

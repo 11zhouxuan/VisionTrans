@@ -1,0 +1,129 @@
+/** Parsed translation result from LLM XML output */
+export interface ParsedTranslation {
+  type: 'word' | 'phrase' | 'error' | 'raw';
+  source: string;
+  context?: string;
+  phonetic?: string;
+  definitions?: Array<{ pos: string; text: string }>;
+  examples?: Array<{ en: string; target: string }>;
+  target?: string;
+  grammar?: Array<{ name: string; text: string }>;
+  vocabulary?: Array<{ pos: string; text: string }>;
+  error?: string;
+  rawText?: string;
+}
+
+/** Parse LLM XML translation output */
+export function parseXmlTranslation(text: string): ParsedTranslation {
+  let xml = text.trim();
+  if (xml.startsWith('```')) {
+    xml = xml.replace(/^```(?:xml)?\n?/, '').replace(/\n?```$/, '').trim();
+  }
+
+  const resultMatch = xml.match(/<result>([\s\S]*)<\/result>/);
+  if (!resultMatch) {
+    return { type: 'raw', source: text.substring(0, 80), rawText: text };
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+
+    const parseError = doc.querySelector('parsererror');
+    if (parseError) {
+      return { type: 'raw', source: text.substring(0, 80), rawText: text };
+    }
+
+    const errorEl = doc.querySelector('error');
+    if (errorEl) {
+      return { type: 'error', source: '', error: errorEl.textContent || '未知错误' };
+    }
+
+    const translationEl = doc.querySelector('translation');
+    if (!translationEl) {
+      return { type: 'raw', source: text.substring(0, 80), rawText: text };
+    }
+
+    const type = translationEl.getAttribute('type') as 'word' | 'phrase' || 'phrase';
+    const source = doc.querySelector('source')?.textContent?.trim() || '';
+
+    if (type === 'word') {
+      const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
+      const defEls = doc.querySelectorAll('def');
+      const definitions = Array.from(defEls).map(el => ({
+        pos: el.getAttribute('pos') || '',
+        text: el.textContent?.trim() || '',
+      }));
+      const context = doc.querySelector('context')?.textContent?.trim();
+      const exampleEls = doc.querySelectorAll('example');
+      const examples = Array.from(exampleEls).map(el => ({
+        en: el.querySelector('en')?.textContent?.trim() || '',
+        target: el.querySelector('target')?.textContent?.trim() || '',
+      }));
+      return { type: 'word', source, phonetic, definitions, context, examples };
+    } else {
+      const context = doc.querySelector('context')?.textContent?.trim();
+      const target = doc.querySelector('translation > target')?.textContent?.trim();
+      const patternEls = doc.querySelectorAll('pattern');
+      const grammar = Array.from(patternEls).map(el => ({
+        name: el.getAttribute('name') || '',
+        text: el.textContent?.trim() || '',
+      }));
+      const wordEls = doc.querySelectorAll('vocabulary > word');
+      const vocabulary = Array.from(wordEls).map(el => ({
+        pos: el.getAttribute('pos') || '',
+        text: el.textContent?.trim() || '',
+      }));
+      return { type: 'phrase', source, target, context, grammar, vocabulary };
+    }
+  } catch {
+    return { type: 'raw', source: text.substring(0, 80), rawText: text };
+  }
+}
+
+/** Format parsed translation to readable text (for wordbook display) */
+export function formatTranslation(parsed: ParsedTranslation): string {
+  if (parsed.type === 'raw') return parsed.rawText || '';
+  if (parsed.type === 'error') return parsed.error || '';
+
+  const lines: string[] = [];
+
+  if (parsed.type === 'word') {
+    if (parsed.phonetic) lines.push(parsed.phonetic);
+    if (parsed.definitions?.length) {
+      lines.push('【释义】');
+      parsed.definitions.forEach(d => {
+        lines.push(`  ${d.pos ? d.pos + '. ' : ''}${d.text}`);
+      });
+    }
+    if (parsed.context) {
+      lines.push(`📌 ${parsed.context}`);
+    }
+    if (parsed.examples?.length) {
+      lines.push('【例句】');
+      parsed.examples.forEach(ex => {
+        lines.push(`  • ${ex.en}`);
+        lines.push(`  • ${ex.target}`);
+      });
+    }
+  } else {
+    if (parsed.target) lines.push(parsed.target);
+    if (parsed.context) {
+      lines.push(`📌 ${parsed.context}`);
+    }
+    if (parsed.grammar?.length) {
+      lines.push('【句式】');
+      parsed.grammar.forEach(g => {
+        lines.push(`  ${g.name ? g.name + ': ' : ''}${g.text}`);
+      });
+    }
+    if (parsed.vocabulary?.length) {
+      lines.push('【词汇】');
+      parsed.vocabulary.forEach(v => {
+        lines.push(`  ${v.pos ? '(' + v.pos + ') ' : ''}${v.text}`);
+      });
+    }
+  }
+
+  return lines.join('\n');
+}

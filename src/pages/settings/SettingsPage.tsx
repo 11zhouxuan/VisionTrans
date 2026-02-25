@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { load } from '@tauri-apps/plugin-store';
+import { invoke } from '@tauri-apps/api/core';
 import ApiSettings from './components/ApiSettings';
 import HotkeySettings from './components/HotkeySettings';
 import ProxySettings from './components/ProxySettings';
 import type { AppConfig, ProxyConfig, Provider, UILanguage } from '../../types/config';
 import { DEFAULT_CONFIG } from '../../types/config';
 import { t, setUILanguage } from '../../lib/i18n';
+import { FolderOpen } from 'lucide-react';
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
@@ -27,13 +29,26 @@ export default function SettingsPage() {
         const uiLanguage = await store.get<UILanguage>('uiLanguage') ?? DEFAULT_CONFIG.uiLanguage;
         const hotkey = await store.get<string>('hotkey') ?? DEFAULT_CONFIG.hotkey;
         const proxy = await store.get<ProxyConfig>('proxy') ?? DEFAULT_CONFIG.proxy;
+        const wordbookPath = await store.get<string>('wordbookPath') ?? DEFAULT_CONFIG.wordbookPath;
+        const saveScreenshot = await store.get<boolean>('saveScreenshot') ?? DEFAULT_CONFIG.saveScreenshot;
         const onboardingCompleted = await store.get<boolean>('onboardingCompleted') ?? DEFAULT_CONFIG.onboardingCompleted;
+
+        // If wordbookPath is empty, get the default from backend
+        let resolvedWordbookPath = wordbookPath;
+        if (!resolvedWordbookPath) {
+          try {
+            resolvedWordbookPath = await invoke<string>('get_default_wordbook_path');
+          } catch { /* ignore */ }
+        }
 
         setUILanguage(uiLanguage);
         setConfig({
           provider, apiKey, endpoint, model,
           bedrockApiKey, bedrockModelId, bedrockRegion,
-          targetLanguage, uiLanguage, hotkey, proxy, onboardingCompleted,
+          targetLanguage, uiLanguage, hotkey, proxy,
+          wordbookPath: resolvedWordbookPath,
+          saveScreenshot,
+          onboardingCompleted,
         });
       } catch (err) {
         console.error('Failed to load config:', err);
@@ -56,6 +71,8 @@ export default function SettingsPage() {
       await store.set('uiLanguage', newConfig.uiLanguage);
       await store.set('hotkey', newConfig.hotkey);
       await store.set('proxy', newConfig.proxy);
+      await store.set('wordbookPath', newConfig.wordbookPath);
+      await store.set('saveScreenshot', newConfig.saveScreenshot);
       await store.set('onboardingCompleted', newConfig.onboardingCompleted);
       await store.save();
       setSaved(true);
@@ -119,6 +136,53 @@ export default function SettingsPage() {
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <ProxySettings proxy={config.proxy} onProxyChange={(v) => updateConfig({ proxy: v })} />
+        </div>
+
+        {/* Wordbook Path */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-700">单词本存储路径</h3>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={config.wordbookPath}
+              onChange={(e) => updateConfig({ wordbookPath: e.target.value })}
+              placeholder="~/Documents/VisionTrans-wordbook"
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white font-mono"
+            />
+            <button
+              onClick={() => {
+                const path = config.wordbookPath || '';
+                if (path) {
+                  invoke('open_wordbook_folder', { path }).catch(() => {
+                    // Fallback: try opening via shell
+                    console.error('Failed to open folder');
+                  });
+                }
+              }}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-gray-800 transition-colors whitespace-nowrap"
+              title="在 Finder 中打开"
+            >
+              📂 打开
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            留空则使用默认路径。单词以 JSON 文件存储，每个单词一个文件。
+          </p>
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <div>
+              <span className="text-sm text-gray-700">保存截图到单词文件</span>
+              <p className="text-xs text-gray-400">将截图 Base64 保存到单词 JSON 中（会增大文件体积）</p>
+            </div>
+            <button
+              onClick={() => updateConfig({ saveScreenshot: !config.saveScreenshot })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${config.saveScreenshot ? 'bg-blue-500' : 'bg-gray-300'}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${config.saveScreenshot ? 'left-5' : 'left-0.5'}`} />
+            </button>
+          </div>
         </div>
 
         {/* UI Language - at the bottom */}

@@ -17,6 +17,8 @@ export interface AppConfig {
   uiLanguage: UILanguage;
   hotkey: string;
   proxy?: ProxyConfig;
+  wordbookPath: string;
+  saveScreenshot: boolean;
   onboardingCompleted: boolean;
 }
 
@@ -37,5 +39,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   uiLanguage: 'zh',
   hotkey: 'Alt+Q',
   proxy: undefined,
+  wordbookPath: '',
+  saveScreenshot: true,
   onboardingCompleted: false,
 };
