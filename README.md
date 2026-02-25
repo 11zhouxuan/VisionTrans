@@ -227,11 +227,9 @@ Access via system tray → Vocabulary Book, or the app menu.
 
 ### Roadmap
 
-- 🔜 More target languages (Japanese, Korean, French, German, etc.)
-- 🔜 Translation history
-- 🔜 Auto-start on boot
+- 🔜 Multi-turn conversation — continue asking questions after translation
+- 🔜 S3 cloud sync for vocabulary book — access your words across devices
 - 🔜 Custom prompt templates
-- 🔜 Local OCR fallback for offline use
 
 ---
 
