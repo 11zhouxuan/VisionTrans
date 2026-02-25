@@ -105,12 +105,23 @@ Access settings via:
 
 ## 🤖 Supported Models
 
-VisionTrans works with any **OpenAI-compatible API**, including:
+VisionTrans supports two provider modes:
 
-- **Cloud APIs**: GPT-4o, Claude 3.5 Sonnet, Gemini Pro Vision, etc.
-- **Self-hosted**: [Ollama](https://ollama.com/), [vLLM](https://github.com/vllm-project/vllm), [LocalAI](https://localai.io/), or any OpenAI-compatible server
+### 1. OpenAI-Compatible API (Recommended)
 
-> 💡 Use your own API key with cloud providers, or point the API Endpoint to your local Ollama instance (e.g., `http://localhost:11434/v1`) — completely free and private.
+Works with any service that implements the OpenAI chat completions API:
+
+- **Self-hosted (Free & Private)**: [Ollama](https://ollama.com/), [vLLM](https://github.com/vllm-project/vllm), or any OpenAI-compatible server
+- **Cloud APIs**: GPT-4o, Claude (via compatible proxy), Gemini, etc.
+
+> 💡 **Recommended setup**: Install [Ollama](https://ollama.com/) and run `ollama pull qwen3-vl:8b-instruct`, then set API Endpoint to `http://localhost:11434/v1` — completely free, fully private, no API key needed.
+
+### 2. AWS Bedrock
+
+Native integration with Amazon Bedrock for enterprise users:
+
+- Configure your Bedrock API Key, Model ID, and Region in Settings
+- Supports Claude, Llama, and other models available on Bedrock
 
 ---
 

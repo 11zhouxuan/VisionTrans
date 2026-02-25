@@ -105,12 +105,23 @@
 
 ## 🤖 支持的模型
 
-VisionTrans 兼容任何 **OpenAI 格式的 API**，包括：
+VisionTrans 支持两种模型接入方式：
 
-- **云端 API**：GPT-4o、Claude 3.5 Sonnet、Gemini Pro Vision 等
-- **本地自部署**：[Ollama](https://ollama.com/)、[vLLM](https://github.com/vllm-project/vllm)、[LocalAI](https://localai.io/)，或任何 OpenAI 兼容服务
+### 1. OpenAI 兼容 API（推荐）
 
-> 💡 你可以使用云端 API Key，也可以将 API Endpoint 指向本地 Ollama 实例（如 `http://localhost:11434/v1`）——完全免费、完全私密。
+兼容任何实现了 OpenAI Chat Completions API 的服务：
+
+- **本地自部署（免费 & 私密）**：[Ollama](https://ollama.com/)、[vLLM](https://github.com/vllm-project/vllm)，或任何 OpenAI 兼容服务
+- **云端 API**：GPT-4o、Claude（通过兼容代理）、Gemini 等
+
+> 💡 **推荐方案**：安装 [Ollama](https://ollama.com/) 并运行 `ollama pull qwen3-vl:8b-instruct`，然后将 API Endpoint 设置为 `http://localhost:11434/v1` —— 完全免费、完全私密、无需 API Key。
+
+### 2. AWS Bedrock
+
+为企业用户提供原生 Amazon Bedrock 集成：
+
+- 在设置中配置 Bedrock API Key、Model ID 和 Region
+- 支持 Claude、Llama 等 Bedrock 上可用的模型
 
 ---
 
