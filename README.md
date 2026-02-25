@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/11zhouxuan/VisionTrans/releases"><img src="https://img.shields.io/github/v/release/11zhouxuan/VisionTrans?style=flat-square&color=blue" alt="Release"></a>
-  <a href="https://github.com/11zhouxuan/VisionTrans/blob/master/LICENSE"><img src="https://img.shields.io/github/license/11zhouxuan/VisionTrans?style=flat-square" alt="License"></a>
+  <a href="https://github.com/11zhouxuan/VisionTrans/blob/main/LICENSE"><img src="https://img.shields.io/github/license/11zhouxuan/VisionTrans?style=flat-square" alt="License"></a>
   <a href="https://github.com/11zhouxuan/VisionTrans/releases"><img src="https://img.shields.io/github/downloads/11zhouxuan/VisionTrans/total?style=flat-square&color=green" alt="Downloads"></a>
 </p>
 
