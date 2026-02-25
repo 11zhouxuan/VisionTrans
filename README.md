@@ -42,6 +42,7 @@ You're reading a PDF, watching a foreign video, or browsing a design with embedd
 | 🎨 | **Annotation Tools** | Pen & rectangle markup tools to highlight exactly what you want translated |
 | 🔒 | **Privacy First** | Screenshots exist only in memory — never written to disk. Only the cropped region is sent via HTTPS |
 | 🌍 | **Bilingual UI** | Full Chinese & English interface support |
+| 📖 | **Vocabulary Book** | Auto-save translated words with star, search, and query count tracking |
 | 🖥️ | **Cross-Platform** | macOS (Apple Silicon + Intel) and Windows |
 
 ---
@@ -210,13 +211,26 @@ VisionTrans/
 - ✅ Undo/redo for annotations
 - ✅ One-click build & install script
 
+### Vocabulary Book
+
+Every translation is automatically saved to your personal vocabulary book. Features include:
+
+- ⭐ **Star** important words for quick review
+- 🔍 **Search** across all saved words and translations
+- 📊 **Query count** tracking — see which words you look up most
+- 📁 **Local JSON storage** — your data stays on your machine
+- 🏷️ **Auto-tagging** — single words vs. phrases are labeled automatically
+
+Access via system tray → Vocabulary Book, or the app menu.
+
+---
+
 ### Roadmap
 
 - 🔜 More target languages (Japanese, Korean, French, German, etc.)
 - 🔜 Translation history
 - 🔜 Auto-start on boot
 - 🔜 Custom prompt templates
-- 🔜 Vocabulary book / favorites
 - 🔜 Local OCR fallback for offline use
 
 ---
