@@ -281,27 +281,45 @@ export default function OverlayPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleCancel, handleTranslate, showToolbar, handleUndo, handleRedo]);
 
-  // Helper: draw an arrow from (x1,y1) to (x2,y2)
-  const drawArrow = (ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, lineWidth: number) => {
-    const headLen = 12;
-    const angle = Math.atan2(y2 - y1, x2 - x1);
+  // Helper: draw a bold arrow from (x1,y1) to (x2,y2) with tapered body and large arrowhead
+  const drawArrow = (ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, _lineWidth: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 5) return;
 
-    ctx.strokeStyle = color;
+    const angle = Math.atan2(dy, dx);
+    const headLen = Math.min(len * 0.35, 28); // arrowhead length, proportional but capped
+    const headWidth = headLen * 0.7; // arrowhead half-width
+    const tailWidth = 3; // narrow tail
+
+    // Point where the arrowhead starts (along the shaft)
+    const headBaseX = x2 - headLen * Math.cos(angle);
+    const headBaseY = y2 - headLen * Math.sin(angle);
+
+    // Perpendicular direction
+    const perpX = -Math.sin(angle);
+    const perpY = Math.cos(angle);
+
     ctx.fillStyle = color;
-    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = color;
     ctx.setLineDash([]);
 
-    // Line
+    // Draw tapered arrow body as a single filled shape
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
+    // Start at tail (narrow)
+    ctx.moveTo(x1 + perpX * tailWidth, y1 + perpY * tailWidth);
+    ctx.lineTo(x1 - perpX * tailWidth, y1 - perpY * tailWidth);
+    // Widen to arrowhead base
+    ctx.lineTo(headBaseX - perpX * tailWidth, headBaseY - perpY * tailWidth);
+    // Arrowhead wing (right)
+    ctx.lineTo(headBaseX - perpX * headWidth, headBaseY - perpY * headWidth);
+    // Arrow tip
     ctx.lineTo(x2, y2);
-    ctx.stroke();
-
-    // Arrowhead
-    ctx.beginPath();
-    ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+    // Arrowhead wing (left)
+    ctx.lineTo(headBaseX + perpX * headWidth, headBaseY + perpY * headWidth);
+    // Back to body
+    ctx.lineTo(headBaseX + perpX * tailWidth, headBaseY + perpY * tailWidth);
     ctx.closePath();
     ctx.fill();
   };
