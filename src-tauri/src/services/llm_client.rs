@@ -206,22 +206,39 @@ pub async fn translate(
          </result>\n\
          ```\n\n\
          **格式3: 多个分别标记的单词 (type=\"multi\")**\n\
-         当用户用多个矩形框/箭头分别标记了多个不同位置的单词时使用此格式：\n\
+         当用户用多个矩形框/箭头分别标记了多个不同位置的单词时使用此格式。\n\
+         每个 item 的内容与 type=\"word\" 格式相同，包含完整的释义和例句：\n\
          ```xml\n\
          <result>\n\
          <thinking>简短分析：用户分别标记了哪些单词（不超过3句话）</thinking>\n\
          <translation type=\"multi\">\n\
          <item>\n\
          <source>第一个单词</source>\n\
-         <phonetic>音标</phonetic>\n\
+         <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
+         <definitions>\n\
          <def pos=\"词性\">释义</def>\n\
-         <context>在此处的含义</context>\n\
+         </definitions>\n\
+         <context>结合上下文的具体含义（一句话）</context>\n\
+         <examples>\n\
+         <example>\n\
+         <en>英文例句</en>\n\
+         <target>{target_lang}例句</target>\n\
+         </example>\n\
+         </examples>\n\
          </item>\n\
          <item>\n\
          <source>第二个单词</source>\n\
-         <phonetic>音标</phonetic>\n\
+         <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
+         <definitions>\n\
          <def pos=\"词性\">释义</def>\n\
-         <context>在此处的含义</context>\n\
+         </definitions>\n\
+         <context>结合上下文的具体含义（一句话）</context>\n\
+         <examples>\n\
+         <example>\n\
+         <en>英文例句</en>\n\
+         <target>{target_lang}例句</target>\n\
+         </example>\n\
+         </examples>\n\
          </item>\n\
          </translation>\n\
          </result>\n\

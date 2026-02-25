@@ -17,8 +17,9 @@ const MAX_CARD_HEIGHT = 500;
 interface MultiWordItem {
   source: string;
   phonetic?: string;
-  definition?: { pos: string; text: string };
+  definitions?: Array<{ pos: string; text: string }>;
   context?: string;
+  examples?: Array<{ en: string; target: string }>;
 }
 
 interface ParsedTranslation {
@@ -81,15 +82,25 @@ function parseXmlTranslation(text: string): ParsedTranslation {
 
     if (type === 'multi') {
       const itemEls = doc.querySelectorAll('item');
-      const items: MultiWordItem[] = Array.from(itemEls).map(el => ({
-        source: el.querySelector('source')?.textContent?.trim() || '',
-        phonetic: el.querySelector('phonetic')?.textContent?.trim(),
-        definition: (() => {
-          const defEl = el.querySelector('def');
-          return defEl ? { pos: defEl.getAttribute('pos') || '', text: defEl.textContent?.trim() || '' } : undefined;
-        })(),
-        context: el.querySelector('context')?.textContent?.trim(),
-      }));
+      const items: MultiWordItem[] = Array.from(itemEls).map(el => {
+        const defEls = el.querySelectorAll('def');
+        const definitions = Array.from(defEls).map(d => ({
+          pos: d.getAttribute('pos') || '',
+          text: d.textContent?.trim() || '',
+        }));
+        const exampleEls = el.querySelectorAll('example');
+        const examples = Array.from(exampleEls).map(ex => ({
+          en: ex.querySelector('en')?.textContent?.trim() || '',
+          target: ex.querySelector('target')?.textContent?.trim() || '',
+        }));
+        return {
+          source: el.querySelector('source')?.textContent?.trim() || '',
+          phonetic: el.querySelector('phonetic')?.textContent?.trim(),
+          definitions: definitions.length > 0 ? definitions : undefined,
+          context: el.querySelector('context')?.textContent?.trim(),
+          examples: examples.length > 0 ? examples : undefined,
+        };
+      });
       const allSources = items.map(i => i.source).join(', ');
       return { type: 'multi', source: allSources, items };
     } else if (type === 'word') {
@@ -222,21 +233,41 @@ function PhraseResult({ data }: { data: ParsedTranslation }) {
 function MultiResult({ data }: { data: ParsedTranslation }) {
   if (!data.items?.length) return null;
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {data.items.map((item, idx) => (
-        <div key={idx} className={idx > 0 ? 'border-t border-gray-100 pt-2' : ''}>
+        <div key={idx} className={idx > 0 ? 'border-t border-gray-200 pt-3' : ''}>
           <div>
             <span className="text-base font-bold text-gray-900">{item.source}</span>
             {item.phonetic && <span className="ml-2 text-xs text-gray-400">{item.phonetic}</span>}
           </div>
-          {item.definition && (
-            <div className="text-sm text-gray-700 mt-0.5">
-              {item.definition.pos && <span className="text-gray-500">{item.definition.pos}. </span>}
-              {item.definition.text}
+          {item.definitions && item.definitions.length > 0 && (
+            <div className="mt-1">
+              <SectionLabel>释义</SectionLabel>
+              <div className="mt-1 text-sm text-gray-700">
+                {item.definitions.map((d, i) => (
+                  <div key={i}>{d.pos && <span className="text-gray-500">{d.pos}. </span>}{d.text}</div>
+                ))}
+              </div>
             </div>
           )}
           {item.context && (
-            <div className="text-xs text-indigo-700 bg-indigo-50 px-2 py-1 rounded mt-1">📌 {item.context}</div>
+            <div className="mt-1">
+              <SectionLabel>📌 上下文含义</SectionLabel>
+              <div className="mt-1 text-sm text-indigo-700 bg-indigo-50 px-2 py-1.5 rounded">{item.context}</div>
+            </div>
+          )}
+          {item.examples && item.examples.length > 0 && (
+            <div className="mt-1">
+              <SectionLabel>例句</SectionLabel>
+              <div className="mt-1 text-sm text-gray-500">
+                {item.examples.map((ex, i) => (
+                  <div key={i} className="mb-1">
+                    <div>• EN: {ex.en}</div>
+                    <div>• {ex.target}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       ))}
@@ -309,13 +340,25 @@ export default function ResultCard() {
   useEffect(() => { resizeWindowToFit(); }, [loading, result, error, resizeWindowToFit]);
 
   // Auto-save to wordbook when result arrives
+  // For multi-word results, save each word as a separate entry
   useEffect(() => {
     if (result?.translation && parsed) {
-      const word = parsed.source || result.translation.substring(0, 80);
-      console.log('[wordbook] Auto-saving word:', word.substring(0, 50), 'has_image:', !!result.imageBase64);
-      saveWordToWordbook(word, result.translation, result.sourceLanguage, result.targetLanguage, result.imageBase64)
-        .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
-        .catch((err) => console.error('[wordbook] Auto-save failed:', err));
+      if (parsed.type === 'multi' && parsed.items?.length) {
+        // Save each word separately
+        parsed.items.forEach((item) => {
+          const wordXml = `<result><translation type="word"><source>${item.source}</source>${item.phonetic ? `<phonetic>${item.phonetic}</phonetic>` : ''}${item.definitions?.map(d => `<definitions><def pos="${d.pos}">${d.text}</def></definitions>`).join('') || ''}${item.context ? `<context>${item.context}</context>` : ''}${item.examples?.map(ex => `<examples><example><en>${ex.en}</en><target>${ex.target}</target></example></examples>`).join('') || ''}</translation></result>`;
+          console.log('[wordbook] Auto-saving multi-word item:', item.source);
+          saveWordToWordbook(item.source, wordXml, result.sourceLanguage, result.targetLanguage, result.imageBase64)
+            .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
+            .catch((err) => console.error('[wordbook] Auto-save failed:', err));
+        });
+      } else {
+        const word = parsed.source || result.translation.substring(0, 80);
+        console.log('[wordbook] Auto-saving word:', word.substring(0, 50), 'has_image:', !!result.imageBase64);
+        saveWordToWordbook(word, result.translation, result.sourceLanguage, result.targetLanguage, result.imageBase64)
+          .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
+          .catch((err) => console.error('[wordbook] Auto-save failed:', err));
+      }
     }
   }, [result, parsed]);
 

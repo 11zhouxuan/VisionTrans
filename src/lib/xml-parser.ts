@@ -1,9 +1,10 @@
-/** A single word item in multi-word results */
+/** A single word item in multi-word results (same structure as a full word) */
 export interface MultiWordItem {
   source: string;
   phonetic?: string;
-  definition?: { pos: string; text: string };
+  definitions?: Array<{ pos: string; text: string }>;
   context?: string;
+  examples?: Array<{ en: string; target: string }>;
 }
 
 /** Parsed translation result from LLM XML output */
@@ -58,15 +59,25 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
 
     if (type === 'multi') {
       const itemEls = doc.querySelectorAll('item');
-      const items: MultiWordItem[] = Array.from(itemEls).map(el => ({
-        source: el.querySelector('source')?.textContent?.trim() || '',
-        phonetic: el.querySelector('phonetic')?.textContent?.trim(),
-        definition: (() => {
-          const defEl = el.querySelector('def');
-          return defEl ? { pos: defEl.getAttribute('pos') || '', text: defEl.textContent?.trim() || '' } : undefined;
-        })(),
-        context: el.querySelector('context')?.textContent?.trim(),
-      }));
+      const items: MultiWordItem[] = Array.from(itemEls).map(el => {
+        const defEls = el.querySelectorAll('def');
+        const definitions = Array.from(defEls).map(d => ({
+          pos: d.getAttribute('pos') || '',
+          text: d.textContent?.trim() || '',
+        }));
+        const exampleEls = el.querySelectorAll('example');
+        const examples = Array.from(exampleEls).map(ex => ({
+          en: ex.querySelector('en')?.textContent?.trim() || '',
+          target: ex.querySelector('target')?.textContent?.trim() || '',
+        }));
+        return {
+          source: el.querySelector('source')?.textContent?.trim() || '',
+          phonetic: el.querySelector('phonetic')?.textContent?.trim(),
+          definitions: definitions.length > 0 ? definitions : undefined,
+          context: el.querySelector('context')?.textContent?.trim(),
+          examples: examples.length > 0 ? examples : undefined,
+        };
+      });
       const allSources = items.map(i => i.source).join(', ');
       return { type: 'multi', source: allSources, items };
     } else if (type === 'word') {
@@ -115,10 +126,18 @@ export function formatTranslation(parsed: ParsedTranslation): string {
       if (idx > 0) lines.push('');
       lines.push(`▸ ${item.source}`);
       if (item.phonetic) lines.push(`  ${item.phonetic}`);
-      if (item.definition) {
-        lines.push(`  ${item.definition.pos ? item.definition.pos + '. ' : ''}${item.definition.text}`);
+      if (item.definitions?.length) {
+        item.definitions.forEach(d => {
+          lines.push(`  ${d.pos ? d.pos + '. ' : ''}${d.text}`);
+        });
       }
       if (item.context) lines.push(`  📌 ${item.context}`);
+      if (item.examples?.length) {
+        item.examples.forEach(ex => {
+          lines.push(`  • ${ex.en}`);
+          lines.push(`    ${ex.target}`);
+        });
+      }
     });
   } else if (parsed.type === 'word') {
     if (parsed.phonetic) lines.push(parsed.phonetic);
