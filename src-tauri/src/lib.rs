@@ -196,6 +196,7 @@ pub fn run() {
                     }
                 }
                 // Handle Dock icon click (macOS reopen event)
+                #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {
                     tray::open_settings_public(app_handle);
                 }

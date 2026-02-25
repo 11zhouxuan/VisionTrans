@@ -231,18 +231,30 @@ fn create_result_window(app: &AppHandle, position: &Position) -> Result<(), AppE
         let _ = window.close();
     }
 
-    let _window = WebviewWindowBuilder::new(app, "result", tauri::WebviewUrl::App("/".into()))
+    let mut builder = WebviewWindowBuilder::new(app, "result", tauri::WebviewUrl::App("/".into()))
         .title("")
         .inner_size(card_width, card_height)
         .position(x, y)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
         .closable(false)
         .minimizable(false)
         .maximizable(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .resizable(false)
+        .resizable(false);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.decorations(false);
+    }
+
+    let _window = builder
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
