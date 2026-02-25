@@ -7,7 +7,7 @@ export interface SelectionRect {
   height: number;
 }
 
-type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null;
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'move' | null;
 
 interface UseSelectionReturn {
   selection: SelectionRect | null;
@@ -19,6 +19,7 @@ interface UseSelectionReturn {
   redraw: () => void;
   mousePos: { x: number; y: number };
   setInitialSelection: (rect: SelectionRect) => void;
+  isOnResizeHandle: (x: number, y: number) => boolean;
 }
 
 const HANDLE_SIZE = 8;
@@ -37,13 +38,16 @@ export function useSelection(
   const activeHandle = useRef<ResizeHandle>(null);
   const selRef = useRef<SelectionRect | null>(null);
 
-  // Detect which resize handle is under the cursor
+  const EDGE_THRESHOLD = 6; // pixels from edge to trigger move
+
+  // Detect which resize handle or edge is under the cursor
   const getHandleAt = useCallback((x: number, y: number, sel: SelectionRect): ResizeHandle => {
     const hs = HANDLE_SIZE;
     const { x: sx, y: sy, width: sw, height: sh } = sel;
     const mx = sx + sw / 2;
     const my = sy + sh / 2;
 
+    // Check resize handles first (corners and midpoints)
     const handles: { handle: ResizeHandle; hx: number; hy: number }[] = [
       { handle: 'nw', hx: sx, hy: sy },
       { handle: 'n', hx: mx, hy: sy },
@@ -60,6 +64,18 @@ export function useSelection(
         return handle;
       }
     }
+
+    // Check if on the edge of the selection (for move)
+    const et = EDGE_THRESHOLD;
+    const onLeft = Math.abs(x - sx) <= et && y >= sy - et && y <= sy + sh + et;
+    const onRight = Math.abs(x - (sx + sw)) <= et && y >= sy - et && y <= sy + sh + et;
+    const onTop = Math.abs(y - sy) <= et && x >= sx - et && x <= sx + sw + et;
+    const onBottom = Math.abs(y - (sy + sh)) <= et && x >= sx - et && x <= sx + sw + et;
+
+    if (onLeft || onRight || onTop || onBottom) {
+      return 'move';
+    }
+
     return null;
   }, []);
 
@@ -181,25 +197,31 @@ export function useSelection(
       setSelection({ ...selRef.current });
       redraw();
     } else if (isResizing && selRef.current && activeHandle.current) {
-      // Resizing existing selection
+      // Resizing or moving existing selection
       const dx = x - startPoint.current.x;
       const dy = y - startPoint.current.y;
       const sel = { ...selRef.current };
       const handle = activeHandle.current;
 
-      if (handle.includes('w')) {
+      if (handle === 'move') {
+        // Move the entire selection
         sel.x += dx;
-        sel.width -= dx;
-      }
-      if (handle.includes('e')) {
-        sel.width += dx;
-      }
-      if (handle.includes('n')) {
         sel.y += dy;
-        sel.height -= dy;
-      }
-      if (handle.includes('s')) {
-        sel.height += dy;
+      } else {
+        if (handle.includes('w')) {
+          sel.x += dx;
+          sel.width -= dx;
+        }
+        if (handle.includes('e')) {
+          sel.width += dx;
+        }
+        if (handle.includes('n')) {
+          sel.y += dy;
+          sel.height -= dy;
+        }
+        if (handle.includes('s')) {
+          sel.height += dy;
+        }
       }
 
       // Ensure positive dimensions
@@ -223,6 +245,7 @@ export function useSelection(
         else if (handle === 'ne' || handle === 'sw') canvas.style.cursor = 'nesw-resize';
         else if (handle === 'n' || handle === 's') canvas.style.cursor = 'ns-resize';
         else if (handle === 'e' || handle === 'w') canvas.style.cursor = 'ew-resize';
+        else if (handle === 'move') canvas.style.cursor = 'move';
         else canvas.style.cursor = 'crosshair';
       }
     }
@@ -240,5 +263,10 @@ export function useSelection(
     setSelection(rect);
   }, []);
 
-  return { selection, isDrawing, isResizing, onMouseDown, onMouseMove, onMouseUp, redraw, mousePos, setInitialSelection };
+  const isOnResizeHandle = useCallback((x: number, y: number): boolean => {
+    if (!selRef.current) return false;
+    return getHandleAt(x, y, selRef.current) !== null;
+  }, [getHandleAt]);
+
+  return { selection, isDrawing, isResizing, onMouseDown, onMouseMove, onMouseUp, redraw, mousePos, setInitialSelection, isOnResizeHandle };
 }

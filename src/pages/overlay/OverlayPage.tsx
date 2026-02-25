@@ -78,7 +78,7 @@ export default function OverlayPage() {
   const {
     selection, isDrawing, isResizing,
     onMouseDown, onMouseMove, onMouseUp,
-    redraw: baseRedraw, setInitialSelection,
+    redraw: baseRedraw, setInitialSelection, isOnResizeHandle,
   } = useSelection(canvasRef, bgImage);
 
   // Enhanced redraw that overlays marks
@@ -138,9 +138,17 @@ export default function OverlayPage() {
   const showToolbar = selection && selection.width > MIN_CROP_SIZE && selection.height > MIN_CROP_SIZE && !isDrawing && !isResizing;
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const x = e.nativeEvent.offsetX;
+    const y = e.nativeEvent.offsetY;
+
+    // Always prioritize resize handles over mark tools
+    // This allows users to resize the selection without switching tools
+    if (isOnResizeHandle(x, y)) {
+      onMouseDown(e);
+      return;
+    }
+
     if (markTool !== 'none' && selection) {
-      const x = e.nativeEvent.offsetX;
-      const y = e.nativeEvent.offsetY;
       if (x >= selection.x && x <= selection.x + selection.width &&
           y >= selection.y && y <= selection.y + selection.height) {
         // Save snapshot before marking
@@ -155,7 +163,7 @@ export default function OverlayPage() {
       }
     }
     onMouseDown(e);
-  }, [markTool, selection, onMouseDown, saveSnapshot]);
+  }, [markTool, selection, onMouseDown, saveSnapshot, isOnResizeHandle]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isMarking.current && markTool !== 'none') {
