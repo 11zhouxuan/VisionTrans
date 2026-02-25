@@ -247,9 +247,8 @@ export default function OverlayPage() {
     const croppedBase64 = cropSelection();
     if (!croppedBase64 || !selection) return;
     try {
-      const pos = { x: selection.x + selection.width + 12, y: selection.y };
-      if (pos.x + 380 > window.innerWidth) pos.x = selection.x - 380 - 12;
-      if (pos.x < 0) pos.x = 12;
+      // Fixed position at top-left corner
+      const pos = { x: 24, y: 24 };
       await invoke('start_translation', { imageBase64: croppedBase64, position: pos });
     } catch (err) { console.error('Failed:', err); }
     try { await getCurrentWindow().close(); } catch {}

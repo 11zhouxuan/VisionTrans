@@ -203,29 +203,16 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
     })
 }
 
-fn create_result_window(app: &AppHandle, position: &Position) -> Result<(), AppError> {
+fn create_result_window(app: &AppHandle, _position: &Position) -> Result<(), AppError> {
     use tauri::WebviewWindowBuilder;
 
     let card_width = 400.0;
     let card_height = 120.0;
-    let margin = 12.0;
+    let margin = 24.0;
 
-    let mut x = position.x + margin;
-    let mut y = position.y + margin;
-
-    if let Some(monitor) = app.primary_monitor().ok().flatten() {
-        let screen_width = monitor.size().width as f64 / monitor.scale_factor();
-        let screen_height = monitor.size().height as f64 / monitor.scale_factor();
-
-        if x + card_width > screen_width {
-            x = position.x - card_width - margin;
-        }
-        if y + card_height > screen_height {
-            y = position.y - card_height - margin;
-        }
-        x = x.max(margin);
-        y = y.max(margin);
-    }
+    // Always position at top-left corner
+    let x = margin;
+    let y = margin;
 
     if let Some(window) = app.get_webview_window("result") {
         let _ = window.close();
