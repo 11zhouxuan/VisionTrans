@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="README_CN.md">🇨🇳 中文文档</a>
+  <a href="README_CN.md">中文文档</a>
 </p>
 
 ---
