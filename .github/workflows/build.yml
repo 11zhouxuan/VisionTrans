@@ -86,7 +86,7 @@ jobs:
             2. macOS users: Grant Screen Recording permission when prompted
             3. Configure your LLM API Key in Settings
             4. Press `Option+Q` (macOS) or `Alt+Q` (Windows) to start translating!
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
