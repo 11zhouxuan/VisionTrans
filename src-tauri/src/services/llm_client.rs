@@ -165,7 +165,8 @@ pub async fn translate(
          **重要判断规则：**\n\
          - 如果用户用多个矩形框或箭头分别标记了多个不同的单词/短语（它们在图片中不相邻），请使用 type=\"multi\" 格式，逐个解释每个被标记的词。\n\
          - 如果只标记了一个单词（无空格），使用 type=\"word\"。\n\
-         - 如果标记了一个连续的短语或句子，使用 type=\"phrase\"。\n\n\
+         - 如果标记了一个连续的短语或句子（不超过2-3句话），使用 type=\"phrase\"。\n\
+         - 如果选中区域包含大段文本（超过3句话或一整段），使用 type=\"passage\"，直接翻译全文。\n\n\
          如果图片中没有可识别的文本，请回复：<result><error>未检测到需要翻译的文本</error></result>\n\n\
          请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容：\n\n\
          **格式1: 单个单词 (type=\"word\")**\n\
@@ -240,6 +241,17 @@ pub async fn translate(
          </example>\n\
          </examples>\n\
          </item>\n\
+         </translation>\n\
+         </result>\n\
+         ```\n\n\
+         **格式4: 大段文本 (type=\"passage\")**\n\
+         当选中区域包含大段文本（超过3句话或一整段）时使用此格式，直接翻译全文：\n\
+         ```xml\n\
+         <result>\n\
+         <thinking>简短分析：选中区域包含大段文本，直接翻译（不超过2句话）</thinking>\n\
+         <translation type=\"passage\">\n\
+         <source>原始文本（完整保留）</source>\n\
+         <target>完整翻译</target>\n\
          </translation>\n\
          </result>\n\
          ```\n\n\

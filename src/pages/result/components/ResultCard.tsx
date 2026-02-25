@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
-import { RefreshCw, Copy, X, Check, Loader2, AlertCircle, Settings } from 'lucide-react';
+import { RefreshCw, Copy, X, Check, Loader2, AlertCircle, Settings, BookmarkPlus } from 'lucide-react';
 import type { TranslateResult, TranslateError } from '../../../types/translate';
 import { saveWordToWordbook } from '../../../lib/tauri-api';
 
@@ -23,7 +23,7 @@ interface MultiWordItem {
 }
 
 interface ParsedTranslation {
-  type: 'word' | 'phrase' | 'multi' | 'error' | 'raw';
+  type: 'word' | 'phrase' | 'multi' | 'passage' | 'error' | 'raw';
   source: string;       // Original selected text
   context?: string;     // Contextual meaning from the image
   // Word fields
@@ -77,7 +77,7 @@ function parseXmlTranslation(text: string): ParsedTranslation {
       return { type: 'raw', source: text.substring(0, 80), rawText: text };
     }
 
-    const type = translationEl.getAttribute('type') as 'word' | 'phrase' | 'multi' || 'phrase';
+    const type = translationEl.getAttribute('type') as 'word' | 'phrase' | 'multi' | 'passage' || 'phrase';
     const source = doc.querySelector('source')?.textContent?.trim() || '';
 
     if (type === 'multi') {
@@ -103,6 +103,9 @@ function parseXmlTranslation(text: string): ParsedTranslation {
       });
       const allSources = items.map(i => i.source).join(', ');
       return { type: 'multi', source: allSources, items };
+    } else if (type === 'passage') {
+      const target = doc.querySelector('translation > target')?.textContent?.trim();
+      return { type: 'passage', source, target };
     } else if (type === 'word') {
       const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
       const defEls = doc.querySelectorAll('def');
@@ -275,6 +278,23 @@ function MultiResult({ data }: { data: ParsedTranslation }) {
   );
 }
 
+function PassageResult({ data }: { data: ParsedTranslation }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <SectionLabel>原文</SectionLabel>
+        <div className="mt-1 text-sm text-gray-500 leading-relaxed whitespace-pre-wrap">{data.source}</div>
+      </div>
+      {data.target && (
+        <div>
+          <SectionLabel>翻译</SectionLabel>
+          <div className="mt-1 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{data.target}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TranslationContent({ data }: { data: ParsedTranslation }) {
   switch (data.type) {
     case 'word':
@@ -283,6 +303,8 @@ function TranslationContent({ data }: { data: ParsedTranslation }) {
       return <PhraseResult data={data} />;
     case 'multi':
       return <MultiResult data={data} />;
+    case 'passage':
+      return <PassageResult data={data} />;
     case 'error':
       return <p className="text-gray-500 text-sm">{data.error}</p>;
     case 'raw':
@@ -298,6 +320,7 @@ export default function ResultCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<TranslateError | null>(null);
   const [copied, setCopied] = useState(false);
+  const [savedToWordbook, setSavedToWordbook] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const parsed = useMemo<ParsedTranslation | null>(() => {
@@ -340,9 +363,14 @@ export default function ResultCard() {
   useEffect(() => { resizeWindowToFit(); }, [loading, result, error, resizeWindowToFit]);
 
   // Auto-save to wordbook when result arrives
-  // For multi-word results, save each word as a separate entry
+  // Skip auto-save for passage type (large text) - user decides manually
   useEffect(() => {
     if (result?.translation && parsed) {
+      // Don't auto-save passages - too large, let user decide
+      if (parsed.type === 'passage') {
+        console.log('[wordbook] Passage detected, skipping auto-save (user can save manually)');
+        return;
+      }
       if (parsed.type === 'multi' && parsed.items?.length) {
         // Save each word separately
         parsed.items.forEach((item) => {
@@ -359,6 +387,19 @@ export default function ResultCard() {
           .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
           .catch((err) => console.error('[wordbook] Auto-save failed:', err));
       }
+    }
+  }, [result, parsed]);
+
+  // Manual save to wordbook (for passage type)
+  const handleSaveToWordbook = useCallback(async () => {
+    if (!result?.translation || !parsed) return;
+    const word = parsed.source?.substring(0, 80) || 'passage';
+    try {
+      await saveWordToWordbook(word, result.translation, result.sourceLanguage, result.targetLanguage, result.imageBase64);
+      setSavedToWordbook(true);
+      console.log('[wordbook] Manual save success');
+    } catch (err) {
+      console.error('[wordbook] Manual save failed:', err);
     }
   }, [result, parsed]);
 
@@ -447,6 +488,19 @@ export default function ResultCard() {
 
       {/* Footer actions */}
       <div className="flex justify-end gap-1 px-3 pb-2 pt-1">
+        {/* Save to wordbook button - only shown for passage type */}
+        {parsed?.type === 'passage' && !savedToWordbook && (
+          <button onClick={handleSaveToWordbook}
+            className="text-gray-400 hover:text-indigo-500 transition-colors p-1.5 rounded hover:bg-gray-100"
+            title="保存到单词本" disabled={loading || !!error}>
+            <BookmarkPlus className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {parsed?.type === 'passage' && savedToWordbook && (
+          <span className="text-green-500 p-1.5" title="已保存到单词本">
+            <Check className="w-3.5 h-3.5" />
+          </span>
+        )}
         <button onClick={handleRetry}
           className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded hover:bg-gray-100"
           title="重新翻译" disabled={loading}>

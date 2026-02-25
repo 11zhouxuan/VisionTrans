@@ -9,7 +9,7 @@ export interface MultiWordItem {
 
 /** Parsed translation result from LLM XML output */
 export interface ParsedTranslation {
-  type: 'word' | 'phrase' | 'multi' | 'error' | 'raw';
+  type: 'word' | 'phrase' | 'multi' | 'passage' | 'error' | 'raw';
   source: string;
   context?: string;
   phonetic?: string;
@@ -54,7 +54,7 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
       return { type: 'raw', source: text.substring(0, 80), rawText: text };
     }
 
-    const type = translationEl.getAttribute('type') as 'word' | 'phrase' | 'multi' || 'phrase';
+    const type = translationEl.getAttribute('type') as 'word' | 'phrase' | 'multi' | 'passage' || 'phrase';
     const source = doc.querySelector('source')?.textContent?.trim() || '';
 
     if (type === 'multi') {
@@ -94,6 +94,9 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
         target: el.querySelector('target')?.textContent?.trim() || '',
       }));
       return { type: 'word', source, phonetic, definitions, context, examples };
+    } else if (type === 'passage') {
+      const target = doc.querySelector('translation > target')?.textContent?.trim();
+      return { type: 'passage', source, target };
     } else {
       const context = doc.querySelector('context')?.textContent?.trim();
       const target = doc.querySelector('translation > target')?.textContent?.trim();
@@ -157,6 +160,8 @@ export function formatTranslation(parsed: ParsedTranslation): string {
         lines.push(`  • ${ex.target}`);
       });
     }
+  } else if (parsed.type === 'passage') {
+    if (parsed.target) lines.push(parsed.target);
   } else {
     if (parsed.target) lines.push(parsed.target);
     if (parsed.context) {
