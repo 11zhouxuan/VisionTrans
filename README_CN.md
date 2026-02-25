@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nicekid1/VisionTrans/releases"><img src="https://img.shields.io/github/v/release/nicekid1/VisionTrans?style=flat-square&color=blue" alt="Release"></a>
-  <a href="https://github.com/nicekid1/VisionTrans/blob/main/LICENSE"><img src="https://img.shields.io/github/license/nicekid1/VisionTrans?style=flat-square" alt="License"></a>
-  <a href="https://github.com/nicekid1/VisionTrans/releases"><img src="https://img.shields.io/github/downloads/nicekid1/VisionTrans/total?style=flat-square&color=green" alt="Downloads"></a>
+  <a href="https://github.com/11zhouxuan/VisionTrans/releases"><img src="https://img.shields.io/github/v/release/11zhouxuan/VisionTrans?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://github.com/11zhouxuan/VisionTrans/blob/master/LICENSE"><img src="https://img.shields.io/github/license/11zhouxuan/VisionTrans?style=flat-square" alt="License"></a>
+  <a href="https://github.com/11zhouxuan/VisionTrans/releases"><img src="https://img.shields.io/github/downloads/11zhouxuan/VisionTrans/total?style=flat-square&color=green" alt="Downloads"></a>
 </p>
 
 <p align="center">
@@ -59,7 +59,7 @@
 
 ### 1. 下载安装
 
-从 [GitHub Releases](https://github.com/nicekid1/VisionTrans/releases) 下载最新版本：
+从 [GitHub Releases](https://github.com/11zhouxuan/VisionTrans/releases) 下载最新版本：
 
 | 平台 | 下载文件 |
 |------|---------|
@@ -144,7 +144,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/nicekid1/VisionTrans.git
+git clone https://github.com/11zhouxuan/VisionTrans.git
 cd VisionTrans
 
 # 安装前端依赖
