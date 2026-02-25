@@ -93,7 +93,7 @@ On first launch, the onboarding wizard will guide you through:
 | API Key | Your LLM API key | — |
 | API Endpoint | Custom API endpoint URL | `https://api.openai.com/v1` |
 | Model | Model ID (e.g., `gpt-4o`, `claude-3.5-sonnet`) | `gpt-4o` |
-| Target Language | Translation target language | Chinese |
+| Target Language | Translation target language (any language the model supports) | Chinese |
 | Hotkey | Global shortcut to trigger capture | `Option+Q` / `Alt+Q` |
 | Proxy | HTTP/SOCKS5 proxy for API calls | None |
 
@@ -110,7 +110,7 @@ VisionTrans supports two provider modes:
 
 ### 1. OpenAI-Compatible API (Recommended)
 
-Works with any service that implements the OpenAI chat completions API:
+Works with any service that implements the OpenAI chat completions API. **The model must support vision (image input) capability.**
 
 - **Self-hosted (Free & Private)**: [Ollama](https://ollama.com/), [vLLM](https://github.com/vllm-project/vllm), or any OpenAI-compatible server
 - **Cloud APIs**: GPT-4o, Claude (via compatible proxy), Gemini, etc.

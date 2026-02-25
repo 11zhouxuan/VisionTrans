@@ -93,7 +93,7 @@
 | API Key | 大模型 API 密钥 | — |
 | API Endpoint | 自定义 API 地址（支持代理/中转） | `https://api.openai.com/v1` |
 | Model | 模型 ID（如 `gpt-4o`、`claude-3.5-sonnet`） | `gpt-4o` |
-| 目标语言 | 翻译目标语言 | 中文 |
+| 目标语言 | 翻译目标语言（支持模型能力范围内的任意语言） | 中文 |
 | 快捷键 | 全局截图翻译快捷键 | `Option+Q` / `Alt+Q` |
 | 代理 | HTTP/SOCKS5 代理配置 | 无 |
 
@@ -110,7 +110,7 @@ VisionTrans 支持两种模型接入方式：
 
 ### 1. OpenAI 兼容 API（推荐）
 
-兼容任何实现了 OpenAI Chat Completions API 的服务：
+兼容任何实现了 OpenAI Chat Completions API 的服务。**模型必须支持视觉（图片输入）能力。**
 
 - **本地自部署（免费 & 私密）**：[Ollama](https://ollama.com/)、[vLLM](https://github.com/vllm-project/vllm)，或任何 OpenAI 兼容服务
 - **云端 API**：GPT-4o、Claude（通过兼容代理）、Gemini 等
