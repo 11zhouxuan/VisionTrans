@@ -27,7 +27,8 @@ const OVERLAY_ALPHA = 0.4;
 
 export function useSelection(
   canvasRef: RefObject<HTMLCanvasElement | null>,
-  bgImage: HTMLImageElement | null
+  bgImage: HTMLImageElement | null,
+  onAfterRedraw?: () => void
 ): UseSelectionReturn {
   const [selection, setSelection] = useState<SelectionRect | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -157,7 +158,10 @@ export function useSelection(
       // No selection - full dark overlay
       ctx.fillRect(0, 0, w, h);
     }
-  }, [canvasRef, bgImage, isDrawing]);
+
+    // Call after-redraw callback (e.g., to overlay marks)
+    if (onAfterRedraw) onAfterRedraw();
+  }, [canvasRef, bgImage, isDrawing, onAfterRedraw]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     const x = e.nativeEvent.offsetX;

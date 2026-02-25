@@ -1,8 +1,33 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Star, Trash2, BookOpen, RefreshCw } from 'lucide-react';
+import { Search, Star, Trash2, BookOpen, RefreshCw, Columns } from 'lucide-react';
 import type { WordEntry } from '../../types/wordbook';
 import { getAllWords, toggleStarWord, deleteWordFromWordbook } from '../../lib/tauri-api';
 import { parseXmlTranslation, formatTranslation } from '../../lib/xml-parser';
+
+// All available columns
+type ColumnKey = 'id' | 'star' | 'word' | 'type' | 'translation' | 'count' | 'time' | 'createdAt' | 'sourceTitle' | 'delete';
+
+interface ColumnDef {
+  key: ColumnKey;
+  label: string;
+  defaultVisible: boolean;
+  removable: boolean; // can user toggle it?
+}
+
+const ALL_COLUMNS: ColumnDef[] = [
+  { key: 'id', label: 'ID', defaultVisible: true, removable: true },
+  { key: 'star', label: '⭐ Star', defaultVisible: true, removable: false },
+  { key: 'word', label: 'Word', defaultVisible: true, removable: false },
+  { key: 'type', label: 'Type', defaultVisible: false, removable: true },
+  { key: 'translation', label: 'Translation', defaultVisible: true, removable: false },
+  { key: 'count', label: 'Count', defaultVisible: true, removable: true },
+  { key: 'time', label: 'Updated', defaultVisible: true, removable: true },
+  { key: 'createdAt', label: 'Created', defaultVisible: false, removable: true },
+  { key: 'sourceTitle', label: 'Source', defaultVisible: false, removable: true },
+  { key: 'delete', label: 'Delete', defaultVisible: true, removable: false },
+];
+
+const DEFAULT_VISIBLE = new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key));
 
 export default function WordbookPage() {
   const [words, setWords] = useState<WordEntry[]>([]);
@@ -10,6 +35,24 @@ export default function WordbookPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'starred'>('all');
   const [sortBy, setSortBy] = useState<'time' | 'count'>('time');
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => {
+    try {
+      const saved = localStorage.getItem('wordbook-columns');
+      if (saved) return new Set(JSON.parse(saved) as ColumnKey[]);
+    } catch {}
+    return new Set(DEFAULT_VISIBLE);
+  });
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+
+  const toggleColumn = useCallback((key: ColumnKey) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      localStorage.setItem('wordbook-columns', JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
 
   const loadWords = useCallback(async () => {
     setLoading(true);
@@ -75,6 +118,8 @@ export default function WordbookPage() {
     return date.toLocaleDateString('zh-CN');
   };
 
+  const isCol = (key: ColumnKey) => visibleColumns.has(key);
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Stats Bar */}
@@ -137,6 +182,41 @@ export default function WordbookPage() {
         >
           ⭐ Starred Only
         </button>
+
+        {/* Column Picker */}
+        <div className="relative">
+          <button
+            onClick={() => setShowColumnPicker(!showColumnPicker)}
+            className={`p-2 rounded-lg border transition-colors ${
+              showColumnPicker ? 'border-indigo-400 bg-indigo-50 text-indigo-600' : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+            }`}
+            title="显示/隐藏列"
+          >
+            <Columns className="w-4 h-4" />
+          </button>
+          {showColumnPicker && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-[160px]">
+              <div className="px-3 py-1.5 text-xs text-gray-400 font-semibold uppercase border-b border-gray-100">
+                Columns
+              </div>
+              {ALL_COLUMNS.filter(c => c.removable).map(col => (
+                <label
+                  key={col.key}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.has(col.key)}
+                    onChange={() => toggleColumn(col.key)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {col.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button
           onClick={loadWords}
           className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
@@ -145,6 +225,11 @@ export default function WordbookPage() {
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Click outside to close column picker */}
+      {showColumnPicker && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowColumnPicker(false)} />
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -163,13 +248,16 @@ export default function WordbookPage() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-gray-200 text-left text-xs text-gray-500 uppercase">
-                <th className="py-2 px-2 w-8">ID</th>
-                <th className="py-2 px-1 w-8">⭐</th>
-                <th className="py-2 px-2 w-40">Word</th>
-                <th className="py-2 px-2">Translation (click to expand)</th>
-                <th className="py-2 px-2 w-16 text-center">Count</th>
-                <th className="py-2 px-2 w-24">Time</th>
-                <th className="py-2 px-2 w-10"></th>
+                {isCol('id') && <th className="py-2 px-2 w-8">ID</th>}
+                {isCol('star') && <th className="py-2 px-1 w-8">⭐</th>}
+                {isCol('word') && <th className="py-2 px-2 w-40">Word</th>}
+                {isCol('type') && <th className="py-2 px-2 w-20">Type</th>}
+                {isCol('translation') && <th className="py-2 px-2">Translation (click to expand)</th>}
+                {isCol('count') && <th className="py-2 px-2 w-16 text-center">Count</th>}
+                {isCol('time') && <th className="py-2 px-2 w-24">Updated</th>}
+                {isCol('createdAt') && <th className="py-2 px-2 w-24">Created</th>}
+                {isCol('sourceTitle') && <th className="py-2 px-2 w-32">Source</th>}
+                {isCol('delete') && <th className="py-2 px-2 w-10"></th>}
               </tr>
             </thead>
             <tbody>
@@ -177,6 +265,7 @@ export default function WordbookPage() {
                 <WordRow
                   key={word.id}
                   word={word}
+                  visibleColumns={visibleColumns}
                   onToggleStar={handleToggleStar}
                   onDelete={handleDelete}
                   formatTime={formatTime}
@@ -192,14 +281,16 @@ export default function WordbookPage() {
 
 /** Individual word row with expand/collapse */
 function WordRow({
-  word, onToggleStar, onDelete, formatTime,
+  word, visibleColumns, onToggleStar, onDelete, formatTime,
 }: {
   word: WordEntry;
+  visibleColumns: Set<ColumnKey>;
   onToggleStar: (id: string) => void;
   onDelete: (id: string) => void;
   formatTime: (iso: string) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const isCol = (key: ColumnKey) => visibleColumns.has(key);
 
   // Parse XML and format for display
   const displayText = useMemo(() => {
@@ -210,80 +301,109 @@ function WordRow({
   return (
     <tr className="border-b border-gray-100 hover:bg-white transition-colors align-top">
       {/* ID */}
-      <td className="py-3 px-2 text-xs text-gray-400 font-mono">
-        {word.id.substring(0, 8)}...
-      </td>
+      {isCol('id') && (
+        <td className="py-3 px-2 text-xs text-gray-400 font-mono">
+          {word.id.substring(0, 8)}...
+        </td>
+      )}
       {/* Star */}
-      <td className="py-3 px-1">
-        <button
-          onClick={() => onToggleStar(word.id)}
-          className={`transition-colors ${word.starred ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-500'}`}
-        >
-          <Star className={`w-4 h-4 ${word.starred ? 'fill-current' : ''}`} />
-        </button>
-      </td>
+      {isCol('star') && (
+        <td className="py-3 px-1">
+          <button
+            onClick={() => onToggleStar(word.id)}
+            className={`transition-colors ${word.starred ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-500'}`}
+          >
+            <Star className={`w-4 h-4 ${word.starred ? 'fill-current' : ''}`} />
+          </button>
+        </td>
+      )}
       {/* Word */}
-      <td className="py-3 px-2">
-        <div className="flex items-center gap-2">
+      {isCol('word') && (
+        <td className="py-3 px-2">
           <span className="text-sm font-medium text-gray-800">{word.word}</span>
+        </td>
+      )}
+      {/* Type */}
+      {isCol('type') && (
+        <td className="py-3 px-2">
           {word.isSingleWord ? (
             <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">Word</span>
           ) : (
             <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">Phrase</span>
           )}
-        </div>
-      </td>
+        </td>
+      )}
       {/* Translation (formatted) */}
-      <td className="py-3 px-2">
-        <div
-          className={`text-sm text-gray-600 cursor-pointer ${expanded ? '' : 'line-clamp-3'}`}
-          onClick={() => setExpanded(!expanded)}
-        >
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-            {displayText}
-          </pre>
-        </div>
-        {!expanded && displayText.length > 100 && (
-          <button
-            onClick={() => setExpanded(true)}
-            className="text-xs text-indigo-500 hover:text-indigo-600 mt-1"
+      {isCol('translation') && (
+        <td className="py-3 px-2">
+          <div
+            className={`text-sm text-gray-600 cursor-pointer ${expanded ? '' : 'line-clamp-3'}`}
+            onClick={() => setExpanded(!expanded)}
           >
-            展开全部 ▼
-          </button>
-        )}
-        {expanded && (
-          <button
-            onClick={() => setExpanded(false)}
-            className="text-xs text-indigo-500 hover:text-indigo-600 mt-1"
-          >
-            收起 ▲
-          </button>
-        )}
-      </td>
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+              {displayText}
+            </pre>
+          </div>
+          {!expanded && displayText.length > 100 && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="text-xs text-indigo-500 hover:text-indigo-600 mt-1"
+            >
+              展开全部 ▼
+            </button>
+          )}
+          {expanded && (
+            <button
+              onClick={() => setExpanded(false)}
+              className="text-xs text-indigo-500 hover:text-indigo-600 mt-1"
+            >
+              收起 ▲
+            </button>
+          )}
+        </td>
+      )}
       {/* Count */}
-      <td className="py-3 px-2 text-center">
-        <span className={`text-xs px-2 py-0.5 rounded-full ${
-          word.queryCount > 1
-            ? 'bg-green-100 text-green-700 font-medium'
-            : 'bg-gray-100 text-gray-500'
-        }`}>
-          {word.queryCount}x
-        </span>
-      </td>
-      {/* Time */}
-      <td className="py-3 px-2 text-xs text-gray-400">
-        {formatTime(word.updatedAt)}
-      </td>
+      {isCol('count') && (
+        <td className="py-3 px-2 text-center">
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            word.queryCount > 1
+              ? 'bg-green-100 text-green-700 font-medium'
+              : 'bg-gray-100 text-gray-500'
+          }`}>
+            {word.queryCount}x
+          </span>
+        </td>
+      )}
+      {/* Updated Time */}
+      {isCol('time') && (
+        <td className="py-3 px-2 text-xs text-gray-400">
+          {formatTime(word.updatedAt)}
+        </td>
+      )}
+      {/* Created Time */}
+      {isCol('createdAt') && (
+        <td className="py-3 px-2 text-xs text-gray-400">
+          {formatTime(word.createdAt)}
+        </td>
+      )}
+      {/* Source Title */}
+      {isCol('sourceTitle') && (
+        <td className="py-3 px-2 text-xs text-gray-400">
+          {word.sourceTitle || '—'}
+        </td>
+      )}
       {/* Delete */}
-      <td className="py-3 px-2">
-        <button
-          onClick={() => onDelete(word.id)}
-          className="text-gray-300 hover:text-red-500 transition-colors"
-          title="删除"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </td>
+      {isCol('delete') && (
+        <td className="py-3 px-2">
+          <button
+            onClick={() => onDelete(word.id)}
+            className="text-gray-300 hover:text-red-500 transition-colors"
+            title="删除"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </td>
+      )}
     </tr>
   );
 }

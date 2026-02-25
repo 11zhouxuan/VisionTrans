@@ -75,15 +75,8 @@ export default function OverlayPage() {
     img.src = `data:image/png;base64,${screenshotBase64}`;
   }, [screenshotBase64]);
 
-  const {
-    selection, isDrawing, isResizing,
-    onMouseDown, onMouseMove, onMouseUp,
-    redraw: baseRedraw, setInitialSelection, isOnResizeHandle,
-  } = useSelection(canvasRef, bgImage);
-
-  // Enhanced redraw that overlays marks
-  const redraw = useCallback(() => {
-    baseRedraw();
+  // Callback to overlay marks after every redraw (including internal resize/move redraws)
+  const overlayMarks = useCallback(() => {
     if (markCanvasRef.current && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
@@ -93,7 +86,13 @@ export default function OverlayPage() {
         ctx.restore();
       }
     }
-  }, [baseRedraw]);
+  }, []);
+
+  const {
+    selection, isDrawing, isResizing,
+    onMouseDown, onMouseMove, onMouseUp,
+    redraw, setInitialSelection, isOnResizeHandle,
+  } = useSelection(canvasRef, bgImage, overlayMarks);
 
   // Undo/Redo handlers (defined after redraw)
   const handleUndo = useCallback(() => {
