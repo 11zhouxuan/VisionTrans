@@ -160,21 +160,25 @@ pub async fn translate(
     };
 
     let prompt = format!(
-        "图片中用户通过矩形框选、画笔涂抹或荧光笔标记选中了一段文本。\
-         请识别用户选中区域内的文本内容，结合整体图像的上下文语境，将其翻译为{target_lang}。\n\
+        "图片中用户通过矩形框选、画笔涂抹、箭头指向或荧光笔标记选中了文本。\
+         请识别用户选中/标记区域内的文本内容，结合整体图像的上下文语境，将其翻译为{target_lang}。\n\n\
+         **重要判断规则：**\n\
+         - 如果用户用多个矩形框或箭头分别标记了多个不同的单词/短语（它们在图片中不相邻），请使用 type=\"multi\" 格式，逐个解释每个被标记的词。\n\
+         - 如果只标记了一个单词（无空格），使用 type=\"word\"。\n\
+         - 如果标记了一个连续的短语或句子，使用 type=\"phrase\"。\n\n\
          如果图片中没有可识别的文本，请回复：<result><error>未检测到需要翻译的文本</error></result>\n\n\
          请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容：\n\n\
-         **如果是单个单词（中间无空格，包括长复合词如 multidisciplinary），使用 type=\"word\"：**\n\
+         **格式1: 单个单词 (type=\"word\")**\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析：确认选中文本是什么，判断是 word 还是 phrase（不超过3句话）</thinking>\n\
+         <thinking>简短分析（不超过3句话）</thinking>\n\
          <translation type=\"word\">\n\
-         <source>选中的原始单词</source>\n\
+         <source>原始单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
          <definitions>\n\
          <def pos=\"词性\">释义</def>\n\
          </definitions>\n\
-         <context>结合图片上下文，该单词在此处的具体含义（一句话）</context>\n\
+         <context>结合上下文的具体含义（一句话）</context>\n\
          <examples>\n\
          <example>\n\
          <en>英文例句</en>\n\
@@ -184,20 +188,41 @@ pub async fn translate(
          </translation>\n\
          </result>\n\
          ```\n\n\
-         **如果是短语或句子（包含空格的多个词），使用 type=\"phrase\"：**\n\
+         **格式2: 短语或句子 (type=\"phrase\")**\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析：确认选中文本是什么，判断是 word 还是 phrase（不超过3句话）</thinking>\n\
+         <thinking>简短分析（不超过3句话）</thinking>\n\
          <translation type=\"phrase\">\n\
-         <source>选中的原始文本</source>\n\
+         <source>原始文本</source>\n\
          <target>精准翻译</target>\n\
-         <context>结合图片上下文，该短语/句子在此处的具体含义（一句话）</context>\n\
+         <context>结合上下文的具体含义（一句话）</context>\n\
          <grammar>\n\
          <pattern name=\"句式名\">解释</pattern>\n\
          </grammar>\n\
          <vocabulary>\n\
          <word pos=\"词性\">单词: 释义</word>\n\
          </vocabulary>\n\
+         </translation>\n\
+         </result>\n\
+         ```\n\n\
+         **格式3: 多个分别标记的单词 (type=\"multi\")**\n\
+         当用户用多个矩形框/箭头分别标记了多个不同位置的单词时使用此格式：\n\
+         ```xml\n\
+         <result>\n\
+         <thinking>简短分析：用户分别标记了哪些单词（不超过3句话）</thinking>\n\
+         <translation type=\"multi\">\n\
+         <item>\n\
+         <source>第一个单词</source>\n\
+         <phonetic>音标</phonetic>\n\
+         <def pos=\"词性\">释义</def>\n\
+         <context>在此处的含义</context>\n\
+         </item>\n\
+         <item>\n\
+         <source>第二个单词</source>\n\
+         <phonetic>音标</phonetic>\n\
+         <def pos=\"词性\">释义</def>\n\
+         <context>在此处的含义</context>\n\
+         </item>\n\
          </translation>\n\
          </result>\n\
          ```\n\n\

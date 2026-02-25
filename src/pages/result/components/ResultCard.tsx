@@ -14,8 +14,15 @@ const MAX_CARD_HEIGHT = 500;
 
 // ==================== XML Parsing ====================
 
+interface MultiWordItem {
+  source: string;
+  phonetic?: string;
+  definition?: { pos: string; text: string };
+  context?: string;
+}
+
 interface ParsedTranslation {
-  type: 'word' | 'phrase' | 'error' | 'raw';
+  type: 'word' | 'phrase' | 'multi' | 'error' | 'raw';
   source: string;       // Original selected text
   context?: string;     // Contextual meaning from the image
   // Word fields
@@ -26,6 +33,8 @@ interface ParsedTranslation {
   target?: string;      // Translation
   grammar?: Array<{ name: string; text: string }>;
   vocabulary?: Array<{ pos: string; text: string }>;
+  // Multi-word fields
+  items?: MultiWordItem[];
   // Error
   error?: string;
   // Raw fallback
@@ -67,10 +76,23 @@ function parseXmlTranslation(text: string): ParsedTranslation {
       return { type: 'raw', source: text.substring(0, 80), rawText: text };
     }
 
-    const type = translationEl.getAttribute('type') as 'word' | 'phrase' || 'phrase';
+    const type = translationEl.getAttribute('type') as 'word' | 'phrase' | 'multi' || 'phrase';
     const source = doc.querySelector('source')?.textContent?.trim() || '';
 
-    if (type === 'word') {
+    if (type === 'multi') {
+      const itemEls = doc.querySelectorAll('item');
+      const items: MultiWordItem[] = Array.from(itemEls).map(el => ({
+        source: el.querySelector('source')?.textContent?.trim() || '',
+        phonetic: el.querySelector('phonetic')?.textContent?.trim(),
+        definition: (() => {
+          const defEl = el.querySelector('def');
+          return defEl ? { pos: defEl.getAttribute('pos') || '', text: defEl.textContent?.trim() || '' } : undefined;
+        })(),
+        context: el.querySelector('context')?.textContent?.trim(),
+      }));
+      const allSources = items.map(i => i.source).join(', ');
+      return { type: 'multi', source: allSources, items };
+    } else if (type === 'word') {
       const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
       const defEls = doc.querySelectorAll('def');
       const definitions = Array.from(defEls).map(el => ({
@@ -197,12 +219,39 @@ function PhraseResult({ data }: { data: ParsedTranslation }) {
   );
 }
 
+function MultiResult({ data }: { data: ParsedTranslation }) {
+  if (!data.items?.length) return null;
+  return (
+    <div className="space-y-3">
+      {data.items.map((item, idx) => (
+        <div key={idx} className={idx > 0 ? 'border-t border-gray-100 pt-2' : ''}>
+          <div>
+            <span className="text-base font-bold text-gray-900">{item.source}</span>
+            {item.phonetic && <span className="ml-2 text-xs text-gray-400">{item.phonetic}</span>}
+          </div>
+          {item.definition && (
+            <div className="text-sm text-gray-700 mt-0.5">
+              {item.definition.pos && <span className="text-gray-500">{item.definition.pos}. </span>}
+              {item.definition.text}
+            </div>
+          )}
+          {item.context && (
+            <div className="text-xs text-indigo-700 bg-indigo-50 px-2 py-1 rounded mt-1">📌 {item.context}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TranslationContent({ data }: { data: ParsedTranslation }) {
   switch (data.type) {
     case 'word':
       return <WordResult data={data} />;
     case 'phrase':
       return <PhraseResult data={data} />;
+    case 'multi':
+      return <MultiResult data={data} />;
     case 'error':
       return <p className="text-gray-500 text-sm">{data.error}</p>;
     case 'raw':

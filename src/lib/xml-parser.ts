@@ -1,6 +1,14 @@
+/** A single word item in multi-word results */
+export interface MultiWordItem {
+  source: string;
+  phonetic?: string;
+  definition?: { pos: string; text: string };
+  context?: string;
+}
+
 /** Parsed translation result from LLM XML output */
 export interface ParsedTranslation {
-  type: 'word' | 'phrase' | 'error' | 'raw';
+  type: 'word' | 'phrase' | 'multi' | 'error' | 'raw';
   source: string;
   context?: string;
   phonetic?: string;
@@ -9,6 +17,7 @@ export interface ParsedTranslation {
   target?: string;
   grammar?: Array<{ name: string; text: string }>;
   vocabulary?: Array<{ pos: string; text: string }>;
+  items?: MultiWordItem[];
   error?: string;
   rawText?: string;
 }
@@ -44,10 +53,23 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
       return { type: 'raw', source: text.substring(0, 80), rawText: text };
     }
 
-    const type = translationEl.getAttribute('type') as 'word' | 'phrase' || 'phrase';
+    const type = translationEl.getAttribute('type') as 'word' | 'phrase' | 'multi' || 'phrase';
     const source = doc.querySelector('source')?.textContent?.trim() || '';
 
-    if (type === 'word') {
+    if (type === 'multi') {
+      const itemEls = doc.querySelectorAll('item');
+      const items: MultiWordItem[] = Array.from(itemEls).map(el => ({
+        source: el.querySelector('source')?.textContent?.trim() || '',
+        phonetic: el.querySelector('phonetic')?.textContent?.trim(),
+        definition: (() => {
+          const defEl = el.querySelector('def');
+          return defEl ? { pos: defEl.getAttribute('pos') || '', text: defEl.textContent?.trim() || '' } : undefined;
+        })(),
+        context: el.querySelector('context')?.textContent?.trim(),
+      }));
+      const allSources = items.map(i => i.source).join(', ');
+      return { type: 'multi', source: allSources, items };
+    } else if (type === 'word') {
       const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
       const defEls = doc.querySelectorAll('def');
       const definitions = Array.from(defEls).map(el => ({
@@ -88,7 +110,17 @@ export function formatTranslation(parsed: ParsedTranslation): string {
 
   const lines: string[] = [];
 
-  if (parsed.type === 'word') {
+  if (parsed.type === 'multi' && parsed.items?.length) {
+    parsed.items.forEach((item, idx) => {
+      if (idx > 0) lines.push('');
+      lines.push(`▸ ${item.source}`);
+      if (item.phonetic) lines.push(`  ${item.phonetic}`);
+      if (item.definition) {
+        lines.push(`  ${item.definition.pos ? item.definition.pos + '. ' : ''}${item.definition.text}`);
+      }
+      if (item.context) lines.push(`  📌 ${item.context}`);
+    });
+  } else if (parsed.type === 'word') {
     if (parsed.phonetic) lines.push(parsed.phonetic);
     if (parsed.definitions?.length) {
       lines.push('【释义】');
