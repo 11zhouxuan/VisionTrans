@@ -210,9 +210,9 @@ fn create_result_window(app: &AppHandle, _position: &Position) -> Result<(), App
     let card_height = 120.0;
     let margin = 24.0;
 
-    // Always position at top-left corner
-    let x = margin;
-    let y = margin;
+    // Position near top-left, slightly offset for better aesthetics
+    let x = 80.0;
+    let y = 64.0;
 
     if let Some(window) = app.get_webview_window("result") {
         let _ = window.close();
