@@ -37,6 +37,8 @@ export default function WordbookPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'starred'>('all');
   const [sortBy, setSortBy] = useState<'time' | 'count'>('time');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => {
     try {
       const saved = localStorage.getItem('wordbook-columns-v2');
@@ -98,6 +100,14 @@ export default function WordbookPage() {
       if (sortBy === 'count') return b.queryCount - a.queryCount;
       return b.updatedAt.localeCompare(a.updatedAt);
     });
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredWords.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedWords = filteredWords.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+
+  // Reset to page 1 when filter/search changes
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filter, sortBy]);
 
   // Stats
   const totalCount = words.length;
@@ -265,7 +275,7 @@ export default function WordbookPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredWords.map((word) => (
+              {paginatedWords.map((word) => (
                 <WordRow
                   key={word.id}
                   word={word}
@@ -279,6 +289,59 @@ export default function WordbookPage() {
           </table>
         )}
       </div>
+
+      {/* Pagination */}
+      {filteredWords.length > 0 && (
+        <div className="px-6 py-3 border-t border-gray-200 bg-white flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2 text-gray-500">
+            <span>Showing {((safeCurrentPage - 1) * pageSize) + 1}–{Math.min(safeCurrentPage * pageSize, filteredWords.length)} of {filteredWords.length}</span>
+            <span className="text-gray-300">|</span>
+            <span>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setCurrentPage(1); }}
+              className="px-2 py-1 text-xs border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              {[5, 10, 20, 50, 100].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={safeCurrentPage <= 1}
+              className={`px-2 py-1 rounded text-xs ${safeCurrentPage <= 1 ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              «
+            </button>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={safeCurrentPage <= 1}
+              className={`px-2 py-1 rounded text-xs ${safeCurrentPage <= 1 ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              ‹
+            </button>
+            <span className="px-3 py-1 text-xs text-gray-600">
+              {safeCurrentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={safeCurrentPage >= totalPages}
+              className={`px-2 py-1 rounded text-xs ${safeCurrentPage >= totalPages ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              ›
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={safeCurrentPage >= totalPages}
+              className={`px-2 py-1 rounded text-xs ${safeCurrentPage >= totalPages ? 'text-gray-300' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              »
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
