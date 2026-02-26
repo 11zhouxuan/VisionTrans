@@ -58,6 +58,8 @@ pub async fn start_translation(
     };
 
     if !has_key {
+        // Release concurrency slot immediately since no translation will happen
+        state.release_result_window(&window_id);
         let _ = app.emit_to(
             window_id.as_str(),
             "translation-error",
@@ -74,7 +76,17 @@ pub async fn start_translation(
     let app_handle = app.clone();
     let win_id = window_id.clone();
     tauri::async_runtime::spawn(async move {
-        match llm_client::translate(&config, &image_base64).await {
+        let result = llm_client::translate(&config, &image_base64).await;
+
+        // Release the concurrency slot as soon as translation completes (success or error)
+        // The result window stays open for the user to read, but the slot is freed
+        {
+            let state = app_handle.state::<AppState>();
+            state.release_result_window(&win_id);
+            eprintln!("[translate] Translation done, released concurrency slot: {} (active: {})", &win_id, state.active_count());
+        }
+
+        match result {
             Ok(mut result) => {
                 eprintln!("[llm] Translation result for {}:\n{}", &win_id, &result.translation);
                 // Check if saveScreenshot is enabled, attach image to result
