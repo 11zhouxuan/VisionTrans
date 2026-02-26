@@ -72,7 +72,7 @@
 
 首次启动时，引导向导会帮你完成：
 
-1. **授予权限** — macOS 需要授予屏幕录制权限
+1. **授予权限** — macOS：屏幕录制权限（[macOS 指南](doc/macos-permissions.md)）| Windows：SmartScreen 绕过（[Windows 指南](doc/windows-permissions.md)）
 2. **输入 API Key** — 支持任何 OpenAI 兼容格式的 API（GPT-4o、Claude、Gemini 等）
 3. **设置快捷键** — 默认：`Option+Q`（macOS）/ `Alt+Q`（Windows）
 

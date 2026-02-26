@@ -72,7 +72,7 @@ Download the latest release from [GitHub Releases](https://github.com/11zhouxuan
 
 On first launch, the onboarding wizard will guide you through:
 
-1. **Grant Permissions** — macOS requires Screen Recording permission
+1. **Grant Permissions** — macOS: Screen Recording permission ([macOS guide](doc/macos-permissions.md)) | Windows: SmartScreen bypass ([Windows guide](doc/windows-permissions.md))
 2. **Enter API Key** — Supports any OpenAI-compatible API (GPT-4o, Claude, Gemini, etc.)
 3. **Set Hotkey** — Default: `Option+Q` (macOS) / `Alt+Q` (Windows)
 
