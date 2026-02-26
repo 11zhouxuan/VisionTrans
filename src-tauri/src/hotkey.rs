@@ -157,6 +157,31 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
+    // On macOS, set the overlay window to appear on all Spaces (including fullscreen app Spaces)
+    // This prevents the window from jumping to a different Space when a fullscreen app is active
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::NSApplication;
+        use objc2::msg_send;
+
+        unsafe {
+            let app = NSApplication::sharedApplication();
+            let windows = app.windows();
+            // The overlay window we just created should be the last one in the array
+            let count: usize = msg_send![&*windows, count];
+            if count > 0 {
+                let last_window: *mut objc2::runtime::AnyObject = msg_send![&*windows, lastObject];
+                if !last_window.is_null() {
+                    // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
+                    // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
+                    let behavior: usize = (1 << 0) | (1 << 8);
+                    let _: () = msg_send![last_window, setCollectionBehavior: behavior];
+                    eprintln!("[overlay] Set NSWindowCollectionBehavior: canJoinAllSpaces | fullScreenAuxiliary");
+                }
+            }
+        }
+    }
+
     // Show window after a brief delay to let WebView initialize
     let win = window.clone();
     std::thread::spawn(move || {
