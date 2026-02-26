@@ -57,8 +57,10 @@ function parseXmlTranslation(text: string): ParsedTranslation {
   }
 
   try {
+    // Sanitize: escape unescaped & characters (not part of XML entities)
+    const sanitized = xml.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[\da-fA-F]+;)/g, '&amp;');
     const parser = new DOMParser();
-    const doc = parser.parseFromString(xml, 'text/xml');
+    const doc = parser.parseFromString(sanitized, 'text/xml');
 
     // Check for parse errors
     const parseError = doc.querySelector('parsererror');
