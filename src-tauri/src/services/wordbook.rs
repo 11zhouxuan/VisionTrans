@@ -131,7 +131,10 @@ fn write_word_file(entry: &WordEntry, custom_path: &Option<String>) -> Result<()
         .map_err(|e| AppError::Internal(format!("写入单词文件失败: {}", e)))?;
 
     let jsonl_path = dir.join("meta.jsonl");
-    let compact_json = serde_json::to_string(entry)
+    // Exclude imageBase64 from meta.jsonl to keep the file small
+    let mut meta_entry = entry.clone();
+    meta_entry.image_base64 = None;
+    let compact_json = serde_json::to_string(&meta_entry)
         .map_err(|e| AppError::Internal(format!("序列化单词数据失败: {}", e)))?;
     let mut file = fs::OpenOptions::new()
         .create(true)
