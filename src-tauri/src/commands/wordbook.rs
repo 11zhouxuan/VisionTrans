@@ -24,15 +24,16 @@ pub async fn save_word_to_wordbook(
     app: AppHandle,
     word: String,
     translation: String,
+    word_type: String,
     source_language: String,
     target_language: String,
     image_base64: Option<String>,
 ) -> Result<WordEntry, AppError> {
     let custom_path = read_wordbook_path(&app);
     eprintln!("[wordbook-cmd] save_word_to_wordbook called");
-    eprintln!("[wordbook-cmd]   word: {:?}", &word[..word.len().min(50)]);
+    eprintln!("[wordbook-cmd]   word: {:?}, type: {}", &word[..word.len().min(50)], &word_type);
     eprintln!("[wordbook-cmd]   has_image: {}", image_base64.is_some());
-    let result = wordbook::save_word(&word, &translation, &source_language, &target_language, &custom_path, image_base64);
+    let result = wordbook::save_word(&word, &translation, &word_type, &source_language, &target_language, &custom_path, image_base64);
     match &result {
         Ok(entry) => eprintln!("[wordbook-cmd] save OK: id={}", entry.id),
         Err(e) => eprintln!("[wordbook-cmd] save ERROR: {}", e),

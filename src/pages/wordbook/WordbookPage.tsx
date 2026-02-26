@@ -112,8 +112,9 @@ export default function WordbookPage() {
   // Stats
   const totalCount = words.length;
   const starredCount = words.filter(w => w.starred).length;
-  const wordCount = words.filter(w => w.isSingleWord).length;
-  const phraseCount = words.filter(w => !w.isSingleWord).length;
+  const wordCount = words.filter(w => (w.wordType || 'word') === 'word').length;
+  const phraseCount = words.filter(w => (w.wordType || 'word') === 'phrase').length;
+  const passageCount = words.filter(w => (w.wordType || 'word') === 'passage').length;
   const totalQueries = words.reduce((sum, w) => sum + w.queryCount, 0);
 
   const formatTime = (isoString: string) => {
@@ -149,13 +150,14 @@ export default function WordbookPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-5 gap-3 px-6 py-4">
+      <div className="grid grid-cols-6 gap-3 px-6 py-4">
         {[
-          { value: totalCount, label: 'Total Words', color: 'text-indigo-600' },
-          { value: wordCount, label: 'Single Words', color: 'text-blue-600' },
+          { value: totalCount, label: 'Total', color: 'text-indigo-600' },
+          { value: wordCount, label: 'Words', color: 'text-blue-600' },
           { value: phraseCount, label: 'Phrases', color: 'text-purple-600' },
+          { value: passageCount, label: 'Passages', color: 'text-teal-600' },
           { value: starredCount, label: 'Starred', color: 'text-yellow-600' },
-          { value: totalQueries, label: 'Total Queries', color: 'text-green-600' },
+          { value: totalQueries, label: 'Queries', color: 'text-green-600' },
         ].map(({ value, label, color }) => (
           <div key={label} className="bg-white rounded-lg border border-gray-200 p-3 text-center">
             <div className={`text-2xl font-bold ${color}`}>{value}</div>
@@ -395,11 +397,13 @@ function WordRow({
       {/* Type */}
       {isCol('type') && (
         <td className="py-3 px-2">
-          {word.isSingleWord ? (
-            <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">Word</span>
-          ) : (
-            <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">Phrase</span>
-          )}
+          {(() => {
+            const wt = word.wordType || 'word';
+            if (wt === 'word') return <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">Word</span>;
+            if (wt === 'phrase') return <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">Phrase</span>;
+            if (wt === 'passage') return <span className="text-[10px] px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded font-medium">Passage</span>;
+            return <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-medium">{wt}</span>;
+          })()}
         </td>
       )}
       {/* Translation (formatted) */}

@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_store::StoreExt;
 
 use crate::errors::AppError;
@@ -68,6 +69,33 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         let is_paused = state.is_paused.lock().unwrap();
         if *is_paused {
             *state.is_capturing.lock().unwrap() = false;
+            return Ok(());
+        }
+    }
+
+    // Check concurrency limit before proceeding with capture
+    {
+        let max_concurrency = app.store("config.json")
+            .ok()
+            .and_then(|s| s.get("maxConcurrency"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(1)
+            .max(1);
+
+        let active_count = state.active_count();
+        if active_count >= max_concurrency {
+            *state.is_capturing.lock().unwrap() = false;
+            // Show system notification to inform user
+            let _ = app.notification()
+                .builder()
+                .title("VisionTrans")
+                .body(format!(
+                    "当前已有 {} 个翻译任务进行中，请等待完成后再试 / {} translation(s) in progress, please wait.",
+                    active_count, active_count
+                ))
+                .show();
+            eprintln!("[hotkey] Capture blocked: concurrency limit reached ({}/{})", active_count, max_concurrency);
             return Ok(());
         }
     }

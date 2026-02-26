@@ -42,6 +42,9 @@ You're reading a PDF, watching a foreign video, or browsing a design with embedd
 | 🎨 | **Annotation Tools** | Pen & rectangle markup tools to highlight exactly what you want translated |
 | 🔒 | **Privacy First** | Screenshots exist only in memory — never written to disk. Only the cropped region is sent via HTTPS |
 | 🌍 | **Bilingual UI** | Full Chinese & English interface support |
+| 🔤 | **Auto Language Detection** | Automatically identifies the source language — no manual selection needed |
+| 📝 | **Multi-word Translation** | Select multiple words at once and get translations for each simultaneously |
+| 📄 | **Passage Translation** | Supports translating large paragraphs and long text blocks with full context |
 | 📖 | **Vocabulary Book** | Auto-save translated words with star, search, and query count tracking |
 | 🖥️ | **Cross-Platform** | macOS (Apple Silicon + Intel) and Windows |
 

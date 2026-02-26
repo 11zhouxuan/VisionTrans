@@ -374,18 +374,19 @@ export default function ResultCard() {
         return;
       }
       if (parsed.type === 'multi' && parsed.items?.length) {
-        // Save each word separately
+        // Save each word separately (multi → individual "word" entries)
         parsed.items.forEach((item) => {
           const wordXml = `<result><translation type="word"><source>${item.source}</source>${item.phonetic ? `<phonetic>${item.phonetic}</phonetic>` : ''}${item.definitions?.map(d => `<definitions><def pos="${d.pos}">${d.text}</def></definitions>`).join('') || ''}${item.context ? `<context>${item.context}</context>` : ''}${item.examples?.map(ex => `<examples><example><en>${ex.en}</en><target>${ex.target}</target></example></examples>`).join('') || ''}</translation></result>`;
           console.log('[wordbook] Auto-saving multi-word item:', item.source);
-          saveWordToWordbook(item.source, wordXml, result.sourceLanguage, result.targetLanguage, result.imageBase64)
+          saveWordToWordbook(item.source, wordXml, 'word', result.sourceLanguage, result.targetLanguage, result.imageBase64)
             .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
             .catch((err) => console.error('[wordbook] Auto-save failed:', err));
         });
       } else {
         const word = parsed.source || result.translation.substring(0, 80);
-        console.log('[wordbook] Auto-saving word:', word.substring(0, 50), 'has_image:', !!result.imageBase64);
-        saveWordToWordbook(word, result.translation, result.sourceLanguage, result.targetLanguage, result.imageBase64)
+        const wordType = parsed.type === 'word' || parsed.type === 'phrase' ? parsed.type : 'word';
+        console.log('[wordbook] Auto-saving:', word.substring(0, 50), 'type:', wordType, 'has_image:', !!result.imageBase64);
+        saveWordToWordbook(word, result.translation, wordType, result.sourceLanguage, result.targetLanguage, result.imageBase64)
           .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
           .catch((err) => console.error('[wordbook] Auto-save failed:', err));
       }
@@ -397,9 +398,9 @@ export default function ResultCard() {
     if (!result?.translation || !parsed) return;
     const word = parsed.source?.substring(0, 80) || 'passage';
     try {
-      await saveWordToWordbook(word, result.translation, result.sourceLanguage, result.targetLanguage, result.imageBase64);
+      await saveWordToWordbook(word, result.translation, 'passage', result.sourceLanguage, result.targetLanguage, result.imageBase64);
       setSavedToWordbook(true);
-      console.log('[wordbook] Manual save success');
+      console.log('[wordbook] Manual save success (passage)');
     } catch (err) {
       console.error('[wordbook] Manual save failed:', err);
     }

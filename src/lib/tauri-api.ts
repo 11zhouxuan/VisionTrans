@@ -66,6 +66,7 @@ export async function updateHotkey(hotkey: string): Promise<boolean> {
 export async function saveWordToWordbook(
   word: string,
   translation: string,
+  wordType: 'word' | 'phrase' | 'passage',
   sourceLanguage: string,
   targetLanguage: string,
   imageBase64?: string,
@@ -73,6 +74,7 @@ export async function saveWordToWordbook(
   return invoke<WordEntry>('save_word_to_wordbook', {
     word,
     translation,
+    wordType,
     sourceLanguage,
     targetLanguage,
     imageBase64: imageBase64 || null,

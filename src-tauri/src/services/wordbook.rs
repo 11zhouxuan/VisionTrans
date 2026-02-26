@@ -13,7 +13,8 @@ pub struct WordEntry {
     pub id: String,
     pub word: String,
     pub translation: String,
-    pub is_single_word: bool,
+    /// Translation type: "word", "phrase", or "passage"
+    pub word_type: String,
     pub starred: bool,
     pub query_count: u32,
     pub page_number: Option<u32>,
@@ -22,6 +23,9 @@ pub struct WordEntry {
     pub updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_base64: Option<String>,
+    /// Legacy field for backward compatibility with old JSON files
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_single_word: Option<bool>,
 }
 
 /// Get the wordbook storage directory
@@ -67,6 +71,7 @@ pub fn get_default_wordbook_path() -> Result<String, AppError> {
 pub fn save_word(
     word: &str,
     translation: &str,
+    word_type: &str,
     source_language: &str,
     target_language: &str,
     custom_path: &Option<String>,
@@ -74,25 +79,32 @@ pub fn save_word(
 ) -> Result<WordEntry, AppError> {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
+    // Validate word_type
+    let valid_type = match word_type {
+        "word" | "phrase" | "passage" => word_type.to_string(),
+        _ => "word".to_string(), // default fallback
+    };
+
     // Check if word already exists
     let existing = find_word_by_text(word, custom_path)?;
 
     let entry = if let Some(mut existing) = existing {
         existing.translation = translation.to_string();
+        existing.word_type = valid_type;
         existing.query_count += 1;
         existing.updated_at = now;
         existing.source_title = Some(format!("{} → {}", source_language, target_language));
+        existing.is_single_word = None; // clear legacy field
         if image_base64.is_some() {
             existing.image_base64 = image_base64;
         }
         existing
     } else {
-        let is_single_word = !word.trim().contains(' ');
         WordEntry {
             id: Uuid::new_v4().to_string(),
             word: word.trim().to_string(),
             translation: translation.to_string(),
-            is_single_word,
+            word_type: valid_type,
             starred: false,
             query_count: 1,
             page_number: None,
@@ -100,6 +112,7 @@ pub fn save_word(
             created_at: now.clone(),
             updated_at: now,
             image_base64,
+            is_single_word: None,
         }
     };
 
@@ -164,7 +177,17 @@ pub fn get_all_words(custom_path: &Option<String>) -> Result<Vec<WordEntry>, App
         match fs::read_to_string(&path) {
             Ok(content) => {
                 match serde_json::from_str::<WordEntry>(&content) {
-                    Ok(word) => words.push(word),
+                    Ok(mut word) => {
+                        // Migrate legacy entries: if word_type is empty, infer from is_single_word
+                        if word.word_type.is_empty() {
+                            word.word_type = if word.is_single_word.unwrap_or(true) {
+                                "word".to_string()
+                            } else {
+                                "phrase".to_string()
+                            };
+                        }
+                        words.push(word);
+                    }
                     Err(_) => continue,
                 }
             }
