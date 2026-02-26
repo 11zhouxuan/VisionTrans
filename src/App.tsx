@@ -14,11 +14,14 @@ function App() {
     setWindowLabel(label);
   }, []);
 
+  // Handle result-* windows (result-0, result-1, etc.)
+  if (windowLabel.startsWith('result')) {
+    return <ResultPage />;
+  }
+
   switch (windowLabel) {
     case 'overlay':
       return <OverlayPage />;
-    case 'result':
-      return <ResultPage />;
     case 'settings':
       return <SettingsPage />;
     case 'onboarding':

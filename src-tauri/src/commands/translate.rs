@@ -5,6 +5,17 @@ use crate::errors::AppError;
 use crate::services::llm_client::{self, LLMConfig, ProxyConfig};
 use crate::state::{AppState, Position, TranslationRequest};
 
+/// Read max concurrency from config (default 1)
+fn get_max_concurrency(app: &AppHandle) -> usize {
+    app.store("config.json")
+        .ok()
+        .and_then(|s| s.get("maxConcurrency"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .unwrap_or(1)
+        .max(1) // minimum 1
+}
+
 /// Start translation with cropped image
 #[tauri::command]
 pub async fn start_translation(
@@ -25,8 +36,17 @@ pub async fn start_translation(
     // Clear screenshot data to free memory
     *state.last_screenshot.lock().unwrap() = None;
 
-    // Create result window
-    create_result_window(&app, &position)?;
+    // Check concurrency limit and allocate a window slot
+    let max_concurrency = get_max_concurrency(&app);
+    let window_id = state.allocate_result_window(max_concurrency)
+        .ok_or_else(|| AppError::Internal(format!(
+            "已达到最大并发翻译数 ({})，请等待当前翻译完成后再试",
+            max_concurrency
+        )))?;
+
+    // Create result window with unique ID and offset position
+    let slot_index = state.active_count() - 1; // 0-based index for positioning
+    create_result_window(&app, &window_id, slot_index)?;
 
     // Read config from store
     let config = read_llm_config(&app)?;
@@ -39,7 +59,7 @@ pub async fn start_translation(
 
     if !has_key {
         let _ = app.emit_to(
-            "result",
+            window_id.as_str(),
             "translation-error",
             serde_json::json!({
                 "code": "API_KEY_NOT_CONFIGURED",
@@ -52,10 +72,11 @@ pub async fn start_translation(
 
     // Call LLM API in background
     let app_handle = app.clone();
+    let win_id = window_id.clone();
     tauri::async_runtime::spawn(async move {
         match llm_client::translate(&config, &image_base64).await {
             Ok(mut result) => {
-                eprintln!("[llm] Translation result:\n{}", &result.translation);
+                eprintln!("[llm] Translation result for {}:\n{}", &win_id, &result.translation);
                 // Check if saveScreenshot is enabled, attach image to result
                 let save_screenshot = app_handle.store("config.json")
                     .ok()
@@ -65,7 +86,7 @@ pub async fn start_translation(
                 if save_screenshot {
                     result.image_base64 = Some(image_base64.clone());
                 }
-                let _ = app_handle.emit_to("result", "translation-result", result);
+                let _ = app_handle.emit_to(win_id.as_str(), "translation-result", result);
             }
             Err(err) => {
                 let (code, action) = match &err {
@@ -79,7 +100,7 @@ pub async fn start_translation(
                     _ => ("UNKNOWN", Some("retry")),
                 };
                 let _ = app_handle.emit_to(
-                    "result",
+                    win_id.as_str(),
                     "translation-error",
                     serde_json::json!({
                         "code": code,
@@ -94,7 +115,7 @@ pub async fn start_translation(
     Ok(())
 }
 
-/// Retry the last translation
+/// Retry the last translation (retries in the calling window)
 #[tauri::command]
 pub async fn retry_translation(
     app: AppHandle,
@@ -109,15 +130,16 @@ pub async fn retry_translation(
 
     let config = read_llm_config(&app)?;
 
+    // Retry emits to all result windows (the calling window will pick it up)
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         match llm_client::translate(&config, &request.image_base64).await {
             Ok(result) => {
-                let _ = app_handle.emit_to("result", "translation-result", result);
+                // Emit to all windows - the one that called retry will receive it
+                let _ = app_handle.emit("translation-result", result);
             }
             Err(err) => {
-                let _ = app_handle.emit_to(
-                    "result",
+                let _ = app_handle.emit(
                     "translation-error",
                     serde_json::json!({
                         "code": "RETRY_FAILED",
@@ -129,6 +151,17 @@ pub async fn retry_translation(
         }
     });
 
+    Ok(())
+}
+
+/// Release a result window slot when the window is closed
+#[tauri::command]
+pub async fn release_result_slot(
+    state: State<'_, AppState>,
+    window_id: String,
+) -> Result<(), AppError> {
+    state.release_result_window(&window_id);
+    eprintln!("[translate] Released result slot: {} (active: {})", window_id, state.active_count());
     Ok(())
 }
 
@@ -203,22 +236,25 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
     })
 }
 
-fn create_result_window(app: &AppHandle, _position: &Position) -> Result<(), AppError> {
+fn create_result_window(app: &AppHandle, window_id: &str, slot_index: usize) -> Result<(), AppError> {
     use tauri::WebviewWindowBuilder;
 
     let card_width = 400.0;
     let card_height = 120.0;
-    let margin = 24.0;
 
-    // Position near top-left, slightly offset for better aesthetics
-    let x = 80.0;
-    let y = 64.0;
+    // Offset each window to avoid overlap: cascade down-right
+    let base_x = 80.0;
+    let base_y = 64.0;
+    let offset_per_slot = 36.0;
+    let x = base_x + (slot_index as f64) * offset_per_slot;
+    let y = base_y + (slot_index as f64) * offset_per_slot;
 
-    if let Some(window) = app.get_webview_window("result") {
+    // Close existing window with same ID if any
+    if let Some(window) = app.get_webview_window(window_id) {
         let _ = window.close();
     }
 
-    let mut builder = WebviewWindowBuilder::new(app, "result", tauri::WebviewUrl::App("/".into()))
+    let mut builder = WebviewWindowBuilder::new(app, window_id, tauri::WebviewUrl::App("/".into()))
         .title("")
         .inner_size(card_width, card_height)
         .position(x, y)

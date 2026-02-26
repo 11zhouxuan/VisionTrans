@@ -29,6 +29,7 @@ pub fn run() {
             commands::translate::start_translation,
             commands::translate::retry_translation,
             commands::translate::test_api_connection,
+            commands::translate::release_result_slot,
             commands::window::open_settings_window,
             commands::window::close_overlay,
             commands::permission::check_permission,
@@ -146,6 +147,9 @@ pub fn run() {
             }
             if store.get("bedrockRegion").is_none() {
                 store.set("bedrockRegion", serde_json::json!("us-east-1"));
+            }
+            if store.get("maxConcurrency").is_none() {
+                store.set("maxConcurrency", serde_json::json!(1));
             }
             let _ = store.save();
 

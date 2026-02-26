@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "VisionTrans default capabilities",
-  "windows": ["main", "overlay", "result", "settings", "onboarding", "wordbook"],
+  "windows": ["main", "overlay", "result*", "settings", "onboarding", "wordbook"],
   "permissions": [
     "core:default",
     "core:window:allow-create",

@@ -424,13 +424,28 @@ export default function ResultCard() {
     catch (err) { console.error('Failed to open settings:', err); }
   }, []);
 
+  // Release the concurrency slot when this window closes
+  const releaseSlot = useCallback(async () => {
+    const label = getCurrentWindow().label;
+    try {
+      await invoke('release_result_slot', { windowId: label });
+    } catch (err) {
+      console.error('Failed to release result slot:', err);
+    }
+  }, []);
+
+  const handleClose = useCallback(async () => {
+    await releaseSlot();
+    getCurrentWindow().close();
+  }, [releaseSlot]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') getCurrentWindow().close();
+      if (e.key === 'Escape') handleClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleClose]);
 
   return (
     <motion.div
@@ -449,7 +464,7 @@ export default function ResultCard() {
           {result ? `${result.sourceLanguage} → ${result.targetLanguage}` : '翻译中...'}
         </div>
         <button
-          onClick={() => getCurrentWindow().close()}
+          onClick={handleClose}
           className="text-gray-400 hover:text-gray-600 transition-colors p-0.5 rounded hover:bg-gray-100"
           title="关闭"
         >
