@@ -6,7 +6,6 @@ const translations = {
     'settings.title': 'VisionTrans 设置',
     'settings.saved': '✓ 已保存',
     'settings.footer': 'VisionTrans v1.0 MVP',
-    'settings.costNote': '每次翻译约消耗 $0.005 - $0.02 API 费用',
 
     // API Settings
     'api.title': 'API 配置',
@@ -59,7 +58,6 @@ const translations = {
     'settings.title': 'VisionTrans Settings',
     'settings.saved': '✓ Saved',
     'settings.footer': 'VisionTrans v1.0 MVP',
-    'settings.costNote': 'Each translation costs ~$0.005 - $0.02 in API fees',
 
     // API Settings
     'api.title': 'API Configuration',

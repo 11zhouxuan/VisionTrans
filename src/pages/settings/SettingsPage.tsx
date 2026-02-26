@@ -202,7 +202,6 @@ export default function SettingsPage() {
 
         <div className="text-center text-xs text-gray-400 pb-4">
           <p>{t('settings.footer')}</p>
-          <p className="mt-1">{t('settings.costNote')}</p>
         </div>
       </div>
     </div>
