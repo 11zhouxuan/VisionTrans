@@ -168,11 +168,13 @@ pub async fn translate(
          - 如果标记了一个连续的短语或句子（不超过2-3句话），使用 type=\"phrase\"。\n\
          - 如果选中区域包含大段文本（超过3句话或一整段），使用 type=\"passage\"，直接翻译全文。\n\n\
          如果图片中没有可识别的文本，请回复：<result><error>未检测到需要翻译的文本</error></result>\n\n\
-         请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容：\n\n\
+         请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容。\n\
+         注意：在 <thinking> 中请推断选中文本的源语言（如 English, 日本語, 中文 等），并在 <source-language> 标签中输出。\n\n\
          **格式1: 单个单词 (type=\"word\")**\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析（不超过3句话）</thinking>\n\
+         <thinking>简短分析：推断源语言，判断类型（不超过3句话）</thinking>\n\
+         <source-language>源语言名称（如 English, 日本語, 中文）</source-language>\n\
          <translation type=\"word\">\n\
          <source>原始单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
@@ -192,7 +194,8 @@ pub async fn translate(
          **格式2: 短语或句子 (type=\"phrase\")**\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析（不超过3句话）</thinking>\n\
+         <thinking>简短分析：推断源语言，判断类型（不超过3句话）</thinking>\n\
+         <source-language>源语言名称</source-language>\n\
          <translation type=\"phrase\">\n\
          <source>原始文本</source>\n\
          <target>精准翻译</target>\n\
@@ -211,7 +214,8 @@ pub async fn translate(
          每个 item 的内容与 type=\"word\" 格式相同，包含完整的释义和例句：\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析：用户分别标记了哪些单词（不超过3句话）</thinking>\n\
+         <thinking>简短分析：推断源语言，用户分别标记了哪些单词（不超过3句话）</thinking>\n\
+         <source-language>源语言名称</source-language>\n\
          <translation type=\"multi\">\n\
          <item>\n\
          <source>第一个单词</source>\n\
@@ -248,7 +252,8 @@ pub async fn translate(
          当选中区域包含大段文本（超过3句话或一整段）时使用此格式，直接翻译全文：\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析：选中区域包含大段文本，直接翻译（不超过2句话）</thinking>\n\
+         <thinking>简短分析：推断源语言，选中区域包含大段文本（不超过2句话）</thinking>\n\
+         <source-language>源语言名称</source-language>\n\
          <translation type=\"passage\">\n\
          <source>原始文本（完整保留）</source>\n\
          <target>完整翻译</target>\n\
@@ -264,9 +269,12 @@ pub async fn translate(
         _ => call_openai(config, &prompt, image_base64).await?,
     };
 
+    // Extract source language from LLM XML response
+    let source_language = extract_source_language(&translation).unwrap_or_else(|| "AUTO".to_string());
+
     Ok(TranslateResult {
         translation,
-        source_language: "AUTO".to_string(),
+        source_language,
         target_language: target_lang_name.to_string(),
         image_base64: None,
     })
@@ -501,6 +509,23 @@ async fn test_bedrock(config: &LLMConfig) -> Result<bool, AppError> {
 }
 
 // ===== Helpers =====
+
+/// Extract <source-language> from LLM XML response using simple regex
+fn extract_source_language(xml: &str) -> Option<String> {
+    // Try to find <source-language>...</source-language> in the response
+    let start_tag = "<source-language>";
+    let end_tag = "</source-language>";
+    if let Some(start) = xml.find(start_tag) {
+        let content_start = start + start_tag.len();
+        if let Some(end) = xml[content_start..].find(end_tag) {
+            let lang = xml[content_start..content_start + end].trim().to_string();
+            if !lang.is_empty() {
+                return Some(lang);
+            }
+        }
+    }
+    None
+}
 
 fn normalize_endpoint(endpoint: &str) -> String {
     let url = endpoint.trim_end_matches('/');
