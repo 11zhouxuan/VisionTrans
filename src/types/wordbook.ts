@@ -9,4 +9,5 @@ export interface WordEntry {
   sourceTitle: string | null;
   createdAt: string;   // ISO 8601
   updatedAt: string;   // ISO 8601
+  imageBase64?: string | null;  // Optional screenshot Base64
 }

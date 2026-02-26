@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Star, Trash2, BookOpen, RefreshCw, Columns } from 'lucide-react';
+import { Search, Star, Trash2, BookOpen, RefreshCw, Columns, Image, X } from 'lucide-react';
 import type { WordEntry } from '../../types/wordbook';
 import { getAllWords, toggleStarWord, deleteWordFromWordbook } from '../../lib/tauri-api';
 import { parseXmlTranslation, formatTranslation } from '../../lib/xml-parser';
 
 // All available columns
-type ColumnKey = 'id' | 'star' | 'word' | 'type' | 'translation' | 'rawOutput' | 'count' | 'time' | 'createdAt' | 'language' | 'delete';
+type ColumnKey = 'id' | 'star' | 'word' | 'type' | 'translation' | 'rawOutput' | 'screenshot' | 'count' | 'time' | 'createdAt' | 'language' | 'delete';
 
 interface ColumnDef {
   key: ColumnKey;
@@ -21,6 +21,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'type', label: 'Type', defaultVisible: false, removable: true },
   { key: 'translation', label: 'Translation', defaultVisible: true, removable: false },
   { key: 'rawOutput', label: 'Raw Output', defaultVisible: false, removable: true },
+  { key: 'screenshot', label: 'Screenshot', defaultVisible: false, removable: true },
   { key: 'count', label: 'Count', defaultVisible: true, removable: true },
   { key: 'time', label: 'Updated', defaultVisible: true, removable: true },
   { key: 'createdAt', label: 'Created', defaultVisible: false, removable: true },
@@ -255,6 +256,7 @@ export default function WordbookPage() {
                 {isCol('type') && <th className="py-2 px-2 w-20">Type</th>}
                 {isCol('translation') && <th className="py-2 px-2">Translation (click to expand)</th>}
                 {isCol('rawOutput') && <th className="py-2 px-2">Raw Output</th>}
+                {isCol('screenshot') && <th className="py-2 px-2 w-16 text-center">📷</th>}
                 {isCol('count') && <th className="py-2 px-2 w-16 text-center">Count</th>}
                 {isCol('time') && <th className="py-2 px-2 w-24">Updated</th>}
                 {isCol('createdAt') && <th className="py-2 px-2 w-24">Created</th>}
@@ -293,6 +295,7 @@ function WordRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [rawExpanded, setRawExpanded] = useState(false);
+  const [showImagePreview, setShowImagePreview] = useState(false);
   const isCol = (key: ColumnKey) => visibleColumns.has(key);
 
   // Parse XML and format for display
@@ -385,6 +388,43 @@ function WordRow({
             <button onClick={() => setRawExpanded(false)} className="text-xs text-indigo-500 hover:text-indigo-600 mt-1">
               收起 ▲
             </button>
+          )}
+        </td>
+      )}
+      {/* Screenshot */}
+      {isCol('screenshot') && (
+        <td className="py-3 px-2 text-center">
+          {word.imageBase64 ? (
+            <button
+              onClick={() => setShowImagePreview(true)}
+              className="text-indigo-400 hover:text-indigo-600 transition-colors p-1 rounded hover:bg-indigo-50"
+              title="查看截图"
+            >
+              <Image className="w-4 h-4" />
+            </button>
+          ) : (
+            <span className="text-gray-300 text-xs">—</span>
+          )}
+          {/* Image Preview Modal */}
+          {showImagePreview && word.imageBase64 && (
+            <div
+              className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center"
+              onClick={() => setShowImagePreview(false)}
+            >
+              <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => setShowImagePreview(false)}
+                  className="absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-lg text-gray-500 hover:text-gray-800 z-10"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <img
+                  src={`data:image/png;base64,${word.imageBase64}`}
+                  alt="Screenshot"
+                  className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl"
+                />
+              </div>
+            </div>
           )}
         </td>
       )}
