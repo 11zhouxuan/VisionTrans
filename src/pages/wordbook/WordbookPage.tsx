@@ -5,7 +5,7 @@ import { getAllWords, toggleStarWord, deleteWordFromWordbook } from '../../lib/t
 import { parseXmlTranslation, formatTranslation } from '../../lib/xml-parser';
 
 // All available columns
-type ColumnKey = 'id' | 'star' | 'word' | 'type' | 'translation' | 'count' | 'time' | 'createdAt' | 'sourceTitle' | 'delete';
+type ColumnKey = 'id' | 'star' | 'word' | 'type' | 'translation' | 'rawOutput' | 'count' | 'time' | 'createdAt' | 'language' | 'delete';
 
 interface ColumnDef {
   key: ColumnKey;
@@ -20,10 +20,11 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'word', label: 'Word', defaultVisible: true, removable: false },
   { key: 'type', label: 'Type', defaultVisible: false, removable: true },
   { key: 'translation', label: 'Translation', defaultVisible: true, removable: false },
+  { key: 'rawOutput', label: 'Raw Output', defaultVisible: false, removable: true },
   { key: 'count', label: 'Count', defaultVisible: true, removable: true },
   { key: 'time', label: 'Updated', defaultVisible: true, removable: true },
   { key: 'createdAt', label: 'Created', defaultVisible: false, removable: true },
-  { key: 'sourceTitle', label: 'Source', defaultVisible: false, removable: true },
+  { key: 'language', label: 'Language', defaultVisible: false, removable: true },
   { key: 'delete', label: 'Delete', defaultVisible: true, removable: false },
 ];
 
@@ -37,7 +38,7 @@ export default function WordbookPage() {
   const [sortBy, setSortBy] = useState<'time' | 'count'>('time');
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => {
     try {
-      const saved = localStorage.getItem('wordbook-columns');
+      const saved = localStorage.getItem('wordbook-columns-v2');
       if (saved) return new Set(JSON.parse(saved) as ColumnKey[]);
     } catch {}
     return new Set(DEFAULT_VISIBLE);
@@ -49,7 +50,7 @@ export default function WordbookPage() {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
-      localStorage.setItem('wordbook-columns', JSON.stringify([...next]));
+      localStorage.setItem('wordbook-columns-v2', JSON.stringify([...next]));
       return next;
     });
   }, []);
@@ -253,10 +254,11 @@ export default function WordbookPage() {
                 {isCol('word') && <th className="py-2 px-2 w-40">Word</th>}
                 {isCol('type') && <th className="py-2 px-2 w-20">Type</th>}
                 {isCol('translation') && <th className="py-2 px-2">Translation (click to expand)</th>}
+                {isCol('rawOutput') && <th className="py-2 px-2">Raw Output</th>}
                 {isCol('count') && <th className="py-2 px-2 w-16 text-center">Count</th>}
                 {isCol('time') && <th className="py-2 px-2 w-24">Updated</th>}
                 {isCol('createdAt') && <th className="py-2 px-2 w-24">Created</th>}
-                {isCol('sourceTitle') && <th className="py-2 px-2 w-32">Source</th>}
+                {isCol('language') && <th className="py-2 px-2 w-36">Language</th>}
                 {isCol('delete') && <th className="py-2 px-2 w-10"></th>}
               </tr>
             </thead>
@@ -290,6 +292,7 @@ function WordRow({
   formatTime: (iso: string) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [rawExpanded, setRawExpanded] = useState(false);
   const isCol = (key: ColumnKey) => visibleColumns.has(key);
 
   // Parse XML and format for display
@@ -362,6 +365,29 @@ function WordRow({
           )}
         </td>
       )}
+      {/* Raw Output (original LLM XML) */}
+      {isCol('rawOutput') && (
+        <td className="py-3 px-2">
+          <div
+            className={`text-xs text-gray-500 cursor-pointer font-mono ${rawExpanded ? '' : 'line-clamp-3'}`}
+            onClick={() => setRawExpanded(!rawExpanded)}
+          >
+            <pre className="whitespace-pre-wrap text-xs leading-relaxed">
+              {word.translation}
+            </pre>
+          </div>
+          {!rawExpanded && word.translation.length > 150 && (
+            <button onClick={() => setRawExpanded(true)} className="text-xs text-indigo-500 hover:text-indigo-600 mt-1">
+              展开全部 ▼
+            </button>
+          )}
+          {rawExpanded && (
+            <button onClick={() => setRawExpanded(false)} className="text-xs text-indigo-500 hover:text-indigo-600 mt-1">
+              收起 ▲
+            </button>
+          )}
+        </td>
+      )}
       {/* Count */}
       {isCol('count') && (
         <td className="py-3 px-2 text-center">
@@ -386,8 +412,8 @@ function WordRow({
           {formatTime(word.createdAt)}
         </td>
       )}
-      {/* Source Title */}
-      {isCol('sourceTitle') && (
+      {/* Language direction */}
+      {isCol('language') && (
         <td className="py-3 px-2 text-xs text-gray-400">
           {word.sourceTitle || '—'}
         </td>
