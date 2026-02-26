@@ -375,10 +375,10 @@ export default function ResultCard() {
       }
       if (parsed.type === 'multi' && parsed.items?.length) {
         // Save each word separately (multi → individual "word" entries)
+        // Store the original raw LLM XML for debugging purposes
         parsed.items.forEach((item) => {
-          const wordXml = `<result><translation type="word"><source>${item.source}</source>${item.phonetic ? `<phonetic>${item.phonetic}</phonetic>` : ''}${item.definitions?.map(d => `<definitions><def pos="${d.pos}">${d.text}</def></definitions>`).join('') || ''}${item.context ? `<context>${item.context}</context>` : ''}${item.examples?.map(ex => `<examples><example><en>${ex.en}</en><target>${ex.target}</target></example></examples>`).join('') || ''}</translation></result>`;
           console.log('[wordbook] Auto-saving multi-word item:', item.source);
-          saveWordToWordbook(item.source, wordXml, 'word', result.sourceLanguage, result.targetLanguage, result.imageBase64)
+          saveWordToWordbook(item.source, result.translation, 'word', result.sourceLanguage, result.targetLanguage, result.imageBase64)
             .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
             .catch((err) => console.error('[wordbook] Auto-save failed:', err));
         });
