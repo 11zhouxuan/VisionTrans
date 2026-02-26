@@ -364,10 +364,31 @@ function WordRow({
   const isCol = (key: ColumnKey) => visibleColumns.has(key);
 
   // Parse XML and format for display
+  // For multi-word entries, only show the translation for this specific word
   const displayText = useMemo(() => {
     const parsed = parseXmlTranslation(word.translation);
+    if (parsed.type === 'multi' && parsed.items?.length) {
+      // Find the matching item by word text (case-insensitive)
+      const matchedItem = parsed.items.find(
+        item => item.source.toLowerCase() === word.word.toLowerCase()
+      );
+      if (matchedItem) {
+        // Format as a single word entry
+        const singleWord = {
+          ...parsed,
+          type: 'word' as const,
+          source: matchedItem.source,
+          phonetic: matchedItem.phonetic,
+          definitions: matchedItem.definitions,
+          context: matchedItem.context,
+          examples: matchedItem.examples,
+          items: undefined,
+        };
+        return formatTranslation(singleWord);
+      }
+    }
     return formatTranslation(parsed);
-  }, [word.translation]);
+  }, [word.translation, word.word]);
 
   return (
     <tr className="border-b border-gray-100 hover:bg-white transition-colors align-top">
