@@ -52,6 +52,11 @@ const translations = {
     'proxy.protocol': '代理协议',
     'proxy.address': '代理地址',
     'proxy.addressPlaceholder': 'http://127.0.0.1:7890',
+
+    // Concurrency Settings
+    'concurrency.title': '并发翻译',
+    'concurrency.max': '最大并发数',
+    'concurrency.hint': '同时进行的翻译任务数量，超过限制时新请求将被拒绝',
   },
   en: {
     // Settings page
@@ -104,6 +109,11 @@ const translations = {
     'proxy.protocol': 'Protocol',
     'proxy.address': 'Proxy Address',
     'proxy.addressPlaceholder': 'http://127.0.0.1:7890',
+
+    // Concurrency Settings
+    'concurrency.title': 'Concurrent Translations',
+    'concurrency.max': 'Max Concurrency',
+    'concurrency.hint': 'Number of simultaneous translation tasks. New requests will be rejected when limit is reached.',
   },
 } as const;
 

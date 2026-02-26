@@ -31,6 +31,7 @@ export default function SettingsPage() {
         const proxy = await store.get<ProxyConfig>('proxy') ?? DEFAULT_CONFIG.proxy;
         const wordbookPath = await store.get<string>('wordbookPath') ?? DEFAULT_CONFIG.wordbookPath;
         const saveScreenshot = await store.get<boolean>('saveScreenshot') ?? DEFAULT_CONFIG.saveScreenshot;
+        const maxConcurrency = await store.get<number>('maxConcurrency') ?? DEFAULT_CONFIG.maxConcurrency;
         const onboardingCompleted = await store.get<boolean>('onboardingCompleted') ?? DEFAULT_CONFIG.onboardingCompleted;
 
         // If wordbookPath is empty, get the default from backend
@@ -48,6 +49,7 @@ export default function SettingsPage() {
           targetLanguage, uiLanguage, hotkey, proxy,
           wordbookPath: resolvedWordbookPath,
           saveScreenshot,
+          maxConcurrency,
           onboardingCompleted,
         });
       } catch (err) {
@@ -73,6 +75,7 @@ export default function SettingsPage() {
       await store.set('proxy', newConfig.proxy);
       await store.set('wordbookPath', newConfig.wordbookPath);
       await store.set('saveScreenshot', newConfig.saveScreenshot);
+      await store.set('maxConcurrency', newConfig.maxConcurrency);
       await store.set('onboardingCompleted', newConfig.onboardingCompleted);
       await store.save();
       setSaved(true);
@@ -136,6 +139,24 @@ export default function SettingsPage() {
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <ProxySettings proxy={config.proxy} onProxyChange={(v) => updateConfig({ proxy: v })} />
+        </div>
+
+        {/* Concurrency Settings */}
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-700">{t('concurrency.title')}</h3>
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600">{t('concurrency.max')}</label>
+            <select
+              value={config.maxConcurrency}
+              onChange={(e) => updateConfig({ maxConcurrency: parseInt(e.target.value, 10) })}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {[1, 2, 3, 4, 5].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-gray-400">{t('concurrency.hint')}</p>
         </div>
 
         {/* Wordbook Path */}

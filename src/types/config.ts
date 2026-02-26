@@ -19,6 +19,7 @@ export interface AppConfig {
   proxy?: ProxyConfig;
   wordbookPath: string;
   saveScreenshot: boolean;
+  maxConcurrency: number;
   onboardingCompleted: boolean;
 }
 
@@ -41,5 +42,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   proxy: undefined,
   wordbookPath: '',
   saveScreenshot: true,
+  maxConcurrency: 1,
   onboardingCompleted: false,
 };
