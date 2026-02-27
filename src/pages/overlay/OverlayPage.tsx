@@ -229,7 +229,7 @@ export default function OverlayPage() {
   const editingHandle = useRef<AnnotationHandle | null>(null);
   const editStartPos = useRef({ x: 0, y: 0 });
   const isEditingAnnotation = useRef(false);
-  const [hoveredHandle, setHoveredHandle] = useState<AnnotationHandle | null>(null);
+  const hoveredHandleRef = useRef<AnnotationHandle | null>(null);
 
   // Undo/Redo history (snapshots of annotations array)
   const undoStack = useRef<Annotation[][]>([]);
@@ -275,6 +275,8 @@ export default function OverlayPage() {
   }, [screenshotBase64]);
 
   // Render all annotations on the canvas (called after selection redraw)
+  // NOTE: This callback must have stable identity to prevent the useEffect
+  // that sets initial selection from re-firing when annotations change.
   const overlayMarks = useCallback(() => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -285,8 +287,9 @@ export default function OverlayPage() {
     }
 
     // Draw handles for hovered annotation (when not actively marking)
-    if (hoveredHandle && !isMarking.current && !isEditingAnnotation.current) {
-      const ann = annotationsRef.current[hoveredHandle.annIdx];
+    const hovered = hoveredHandleRef.current;
+    if (hovered && !isMarking.current && !isEditingAnnotation.current) {
+      const ann = annotationsRef.current[hovered.annIdx];
       if (ann) drawAnnotationHandles(ctx, ann);
     }
 
@@ -295,7 +298,7 @@ export default function OverlayPage() {
       const ann = annotationsRef.current[editingHandle.current.annIdx];
       if (ann) drawAnnotationHandles(ctx, ann);
     }
-  }, [hoveredHandle]);
+  }, []); // stable - reads from refs only
 
   const {
     selection, isDrawing, isResizing,
@@ -473,16 +476,17 @@ export default function OverlayPage() {
     // Hover detection for annotation handles
     if (!isMarking.current && !isEditingAnnotation.current && markTool !== 'none') {
       const hit = hitTestAnnotations(x, y, annotationsRef.current);
-      if (hit !== hoveredHandle) {
-        setHoveredHandle(hit);
-        if (hit) {
-          redraw(); // redraw to show/hide handles
-        }
+      const prev = hoveredHandleRef.current;
+      const changed = (hit === null) !== (prev === null) ||
+        (hit && prev && (hit.annIdx !== prev.annIdx || hit.handle !== prev.handle));
+      if (changed) {
+        hoveredHandleRef.current = hit;
+        redraw(); // redraw to show/hide handles
       }
     }
 
     onMouseMove(e);
-  }, [markTool, brushColor, brushSize, onMouseMove, redraw, hoveredHandle]);
+  }, [markTool, brushColor, brushSize, onMouseMove, redraw]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     // Finish editing annotation
@@ -589,7 +593,7 @@ export default function OverlayPage() {
 
   const getCursor = () => {
     // Show annotation handle cursor when hovering
-    const handleCursor = getCursorForHandle(hoveredHandle);
+    const handleCursor = getCursorForHandle(hoveredHandleRef.current);
     if (handleCursor && markTool !== 'none') return handleCursor;
 
     if (markTool === 'brush') return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${brushSize}' height='${brushSize}'%3E%3Ccircle cx='${brushSize/2}' cy='${brushSize/2}' r='${brushSize/2-1}' fill='rgba(255,50,50,0.3)' stroke='%23ef4444' stroke-width='1'/%3E%3C/svg%3E") ${brushSize/2} ${brushSize/2}, crosshair`;
