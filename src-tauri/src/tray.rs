@@ -122,47 +122,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         });
         tray.set_tooltip(Some("VisionTrans - AI 视觉翻译"))?;
 
-        // Force NSImage.setTemplate(false) to preserve original icon colors
-        // Tauri may set template=true even when iconAsTemplate=false in config
-        #[cfg(target_os = "macos")]
-        {
-            use objc2::msg_send;
-            use objc2::runtime::{AnyClass, AnyObject};
-
-            unsafe {
-                let status_bar_cls = match AnyClass::get(c"NSStatusBar") {
-                    Some(cls) => cls,
-                    None => {
-                        eprintln!("[tray] NSStatusBar class not found");
-                        return Ok(());
-                    }
-                };
-                let status_bar: *mut AnyObject = msg_send![status_bar_cls, systemStatusBar];
-                if status_bar.is_null() {
-                    eprintln!("[tray] systemStatusBar is null");
-                    return Ok(());
-                }
-
-                let items: *mut AnyObject = msg_send![status_bar, statusItems];
-                if items.is_null() {
-                    eprintln!("[tray] statusItems is null");
-                    return Ok(());
-                }
-
-                let count: usize = msg_send![items, count];
-                for i in 0..count {
-                    let item: *mut AnyObject = msg_send![items, objectAtIndex: i];
-                    if item.is_null() { continue; }
-                    let button: *mut AnyObject = msg_send![item, button];
-                    if button.is_null() { continue; }
-                    let image: *mut AnyObject = msg_send![button, image];
-                    if image.is_null() { continue; }
-                    // setTemplate: takes BOOL (i8 on macOS), pass 0 for NO
-                    let _: () = msg_send![image, setTemplate: false];
-                }
-                eprintln!("[tray] Set NSImage.setTemplate(false) on {} status items", count);
-            }
-        }
+        // Note: Tauri sets NSImage.isTemplate=true on macOS tray icons.
+        // The iconAsTemplate=false config should handle this, but if colors
+        // are still tinted, a runtime fix via NSStatusBar API would be needed.
+        // Currently disabled due to crash issues with NSStatusBar.statusItems.
     } else {
         eprintln!("Warning: Tray icon 'main-tray' not found, creating new one");
         // Fallback: create a new tray icon
