@@ -86,16 +86,36 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         let active_count = state.active_count();
         if active_count >= max_concurrency {
             *state.is_capturing.lock().unwrap() = false;
-            // Show system notification to inform user
-            let _ = app.notification()
+            eprintln!("[hotkey] Capture blocked: concurrency limit reached ({}/{})", active_count, max_concurrency);
+
+            // Try tauri-plugin-notification first
+            let notif_result = app.notification()
                 .builder()
                 .title("VisionTrans")
                 .body(format!(
-                    "当前已有 {} 个翻译任务进行中，请等待完成后再试 / {} translation(s) in progress, please wait.",
-                    active_count, active_count
+                    "当前已有 {} 个翻译任务进行中，请等待完成后再试",
+                    active_count
                 ))
                 .show();
-            eprintln!("[hotkey] Capture blocked: concurrency limit reached ({}/{})", active_count, max_concurrency);
+            if let Err(e) = notif_result {
+                eprintln!("[hotkey] Notification plugin failed: {}", e);
+            }
+
+            // Also use osascript as a reliable fallback on macOS
+            #[cfg(target_os = "macos")]
+            {
+                let msg = format!(
+                    "当前已有 {} 个翻译任务进行中，请等待完成后再试",
+                    active_count
+                );
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", &format!(
+                        "display notification \"{}\" with title \"VisionTrans\"",
+                        msg
+                    )])
+                    .spawn();
+            }
+
             return Ok(());
         }
     }
