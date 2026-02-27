@@ -26,9 +26,25 @@ export default function HotkeySettings({ hotkey, onHotkeyChange }: HotkeySetting
     if (e.altKey) keys.push('Alt');
     if (e.shiftKey) keys.push('Shift');
     if (e.metaKey) keys.push('Super');
+
+    // Use e.code to get the physical key, because on macOS the Option key
+    // modifies character output (e.g., Option+Q → "œ" instead of "Q")
     const key = e.key;
     if (!['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
-      keys.push(key.length === 1 ? key.toUpperCase() : key);
+      // Map e.code (e.g., "KeyQ", "Digit1", "F5") to a readable key name
+      const code = e.code;
+      let keyName: string;
+      if (code.startsWith('Key')) {
+        keyName = code.slice(3); // "KeyQ" → "Q"
+      } else if (code.startsWith('Digit')) {
+        keyName = code.slice(5); // "Digit1" → "1"
+      } else if (code.startsWith('Numpad')) {
+        keyName = 'Num' + code.slice(6); // "Numpad1" → "Num1"
+      } else {
+        // For special keys (F1-F12, Space, etc.), use e.code directly or e.key
+        keyName = key.length === 1 ? key.toUpperCase() : key;
+      }
+      keys.push(keyName);
     }
     setTempKeys(keys);
   }, [recording]);
