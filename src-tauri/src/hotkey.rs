@@ -161,16 +161,17 @@ fn create_overlay_window(
     // This prevents the window from jumping to a different Space when a fullscreen app is active
     #[cfg(target_os = "macos")]
     {
-        use objc2_app_kit::NSApplication;
         use objc2::msg_send;
+        use objc2::runtime::{AnyClass, AnyObject};
 
         unsafe {
-            let app = NSApplication::sharedApplication();
-            let windows = app.windows();
-            // The overlay window we just created should be the last one in the array
-            let count: usize = msg_send![&*windows, count];
+            // Use raw msg_send! to avoid MainThreadMarker requirement
+            let cls = AnyClass::get(c"NSApplication").unwrap();
+            let app: *mut AnyObject = msg_send![cls, sharedApplication];
+            let windows: *mut AnyObject = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
             if count > 0 {
-                let last_window: *mut objc2::runtime::AnyObject = msg_send![&*windows, lastObject];
+                let last_window: *mut AnyObject = msg_send![windows, lastObject];
                 if !last_window.is_null() {
                     // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
                     // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
