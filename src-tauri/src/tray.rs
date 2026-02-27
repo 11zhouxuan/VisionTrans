@@ -121,6 +121,47 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             _ => {}
         });
         tray.set_tooltip(Some("VisionTrans - AI 视觉翻译"))?;
+
+        // Force NSImage.setTemplate(false) to preserve original icon colors
+        // Tauri may set template=true even when iconAsTemplate=false in config
+        #[cfg(target_os = "macos")]
+        {
+            use objc2::msg_send;
+            use objc2::runtime::{AnyClass, AnyObject, Bool};
+
+            unsafe {
+                // Get NSStatusBar.systemStatusBar
+                let status_bar_cls = AnyClass::get(c"NSStatusBar").unwrap();
+                let status_bar: *mut AnyObject = msg_send![status_bar_cls, systemStatusBar];
+
+                // Get status items array
+                // Note: We need to find our status item. The most reliable way is to
+                // iterate through all status items and find the one with our image.
+                // But a simpler approach: get the button from the tray and set template on its image.
+
+                // Alternative approach: use NSApp's windows to find the status bar button
+                // Actually, the simplest way is to use the Tauri tray's internal NSStatusItem.
+                // Tauri stores the NSStatusItem internally. We can access it through the
+                // NSStatusBar's status items.
+
+                // Get all status items
+                let items: *mut AnyObject = msg_send![status_bar, statusItems];
+                let count: usize = msg_send![items, count];
+
+                // Iterate and set template=false on each status item's button image
+                for i in 0..count {
+                    let item: *mut AnyObject = msg_send![items, objectAtIndex: i];
+                    let button: *mut AnyObject = msg_send![item, button];
+                    if !button.is_null() {
+                        let image: *mut AnyObject = msg_send![button, image];
+                        if !image.is_null() {
+                            let _: () = msg_send![image, setTemplate: Bool::NO];
+                        }
+                    }
+                }
+                eprintln!("[tray] Set NSImage.setTemplate(false) on {} status items", count);
+            }
+        }
     } else {
         eprintln!("Warning: Tray icon 'main-tray' not found, creating new one");
         // Fallback: create a new tray icon
