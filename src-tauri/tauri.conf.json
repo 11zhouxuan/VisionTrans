@@ -22,8 +22,8 @@
       }
     ],
     "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
+      "iconPath": "icons/tray-icon.png",
+      "iconAsTemplate": true,
       "id": "main-tray"
     },
     "security": {
