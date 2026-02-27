@@ -163,10 +163,11 @@ pub async fn translate(
         "图片中用户通过矩形框选、画笔涂抹、箭头指向或荧光笔标记选中了文本。\
          请识别用户选中/标记区域内的文本内容，结合整体图像的上下文语境，将其翻译为{target_lang}。\n\n\
          **重要判断规则：**\n\
-         - 如果用户用多个矩形框或箭头分别标记了多个不同的单词/短语（它们在图片中不相邻），请使用 type=\"multi\" 格式，逐个解释每个被标记的词。\n\
+         - 如果用户用多个矩形框或箭头分别标记了多个不同的文本区域（它们在图片中不相邻），请使用 type=\"multi\" 格式，逐个翻译每个被标记的内容。每个 item 可以是单词、短语或句子。\n\
          - 如果只标记了一个单词（无空格），使用 type=\"word\"。\n\
-         - 如果标记了一个连续的短语或句子（不超过2-3句话），使用 type=\"phrase\"。\n\
-         - 如果选中区域包含大段文本（超过3句话或一整段），使用 type=\"passage\"，直接翻译全文。\n\n\
+         - 如果标记的是一个**不完整的短语或词组**（不构成完整句子，例如 \"in the long run\"、\"machine learning\"、\"as a matter of fact\"），使用 type=\"phrase\"。\n\
+         - 如果选中的文本包含**一个或多个完整句子**（有主谓结构、以句号/问号/感叹号结尾，或者是一整段文本），使用 type=\"passage\"，直接翻译全文。\n\
+         - 简单判断标准：如果文本能独立成句（有完整的主语和谓语），就是 passage；如果只是一个词组/搭配/片段，就是 phrase。\n\n\
          如果图片中没有可识别的文本，请回复：<result><error>未检测到需要翻译的文本</error></result>\n\n\
          请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容。\n\
          注意：在 <thinking> 中请推断选中文本的源语言（如 English, 日本語, 中文 等），并在 <source-language> 标签中输出。\n\n\
@@ -209,12 +210,15 @@ pub async fn translate(
          </translation>\n\
          </result>\n\
          ```\n\n\
-         **格式3: 多个分别标记的单词 (type=\"multi\")**\n\
-         当用户用多个矩形框/箭头分别标记了多个不同位置的单词时使用此格式。\n\
-         每个 item 的内容与 type=\"word\" 格式相同，包含完整的释义和例句：\n\
+         **格式3: 多个分别标记的内容 (type=\"multi\")**\n\
+         当用户用多个矩形框/箭头分别标记了多个不同位置的文本时使用此格式。\n\
+         每个 item 可以是单词、短语或完整句子，根据各自内容选择合适的子格式：\n\
+         - 单词 item：包含 phonetic、definitions、context、examples\n\
+         - 短语 item：包含 target（翻译）、context\n\
+         - 句子 item：包含 target（翻译）\n\
          ```xml\n\
          <result>\n\
-         <thinking>简短分析：推断源语言，用户分别标记了哪些单词（不超过3句话）</thinking>\n\
+         <thinking>简短分析：推断源语言，用户分别标记了哪些内容（不超过3句话）</thinking>\n\
          <source-language>源语言名称</source-language>\n\
          <translation type=\"multi\">\n\
          <item>\n\
@@ -232,24 +236,15 @@ pub async fn translate(
          </examples>\n\
          </item>\n\
          <item>\n\
-         <source>第二个单词</source>\n\
-         <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
-         <definitions>\n\
-         <def pos=\"词性\">释义</def>\n\
-         </definitions>\n\
+         <source>一个短语或完整句子</source>\n\
+         <target>翻译</target>\n\
          <context>结合上下文的具体含义（一句话）</context>\n\
-         <examples>\n\
-         <example>\n\
-         <en>英文例句</en>\n\
-         <target>{target_lang}例句</target>\n\
-         </example>\n\
-         </examples>\n\
          </item>\n\
          </translation>\n\
          </result>\n\
          ```\n\n\
-         **格式4: 大段文本 (type=\"passage\")**\n\
-         当选中区域包含大段文本（超过3句话或一整段）时使用此格式，直接翻译全文：\n\
+         **格式4: 完整句子或大段文本 (type=\"passage\")**\n\
+         当选中的文本是一个或多个完整句子、或一整段文本时使用此格式，直接翻译全文：\n\
          ```xml\n\
          <result>\n\
          <thinking>简短分析：推断源语言，选中区域包含大段文本（不超过2句话）</thinking>\n\
