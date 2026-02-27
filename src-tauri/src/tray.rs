@@ -124,7 +124,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         eprintln!("Warning: Tray icon 'main-tray' not found, creating new one");
         // Fallback: create a new tray icon
-        let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+        let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
         let _tray = tauri::tray::TrayIconBuilder::new()
             .icon(icon)
             .menu(&menu)
