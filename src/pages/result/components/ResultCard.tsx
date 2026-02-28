@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
-import { RefreshCw, Copy, X, Check, Loader2, AlertCircle, Settings, BookmarkPlus } from 'lucide-react';
+import { RefreshCw, Copy, X, Check, Loader2, AlertCircle, Settings } from 'lucide-react';
 import type { TranslateResult, TranslateError } from '../../../types/translate';
 import { saveWordToWordbook } from '../../../lib/tauri-api';
 
@@ -322,7 +322,6 @@ export default function ResultCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<TranslateError | null>(null);
   const [copied, setCopied] = useState(false);
-  const [savedToWordbook, setSavedToWordbook] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const parsed = useMemo<ParsedTranslation | null>(() => {
@@ -364,18 +363,11 @@ export default function ResultCard() {
   // Resize window when content changes
   useEffect(() => { resizeWindowToFit(); }, [loading, result, error, resizeWindowToFit]);
 
-  // Auto-save to wordbook when result arrives
-  // Skip auto-save for passage type (large text) - user decides manually
+  // Auto-save to wordbook when result arrives (all types including passage)
   useEffect(() => {
     if (result?.translation && parsed) {
-      // Don't auto-save passages - too large, let user decide
-      if (parsed.type === 'passage') {
-        console.log('[wordbook] Passage detected, skipping auto-save (user can save manually)');
-        return;
-      }
       if (parsed.type === 'multi' && parsed.items?.length) {
         // Save each word separately (multi → individual "word" entries)
-        // Store the original raw LLM XML for debugging purposes
         parsed.items.forEach((item) => {
           console.log('[wordbook] Auto-saving multi-word item:', item.source);
           saveWordToWordbook(item.source, result.translation, 'word', result.sourceLanguage, result.targetLanguage, result.imageBase64)
@@ -384,25 +376,12 @@ export default function ResultCard() {
         });
       } else {
         const word = parsed.source || result.translation.substring(0, 80);
-        const wordType = parsed.type === 'word' || parsed.type === 'phrase' ? parsed.type : 'word';
+        const wordType = parsed.type === 'word' || parsed.type === 'phrase' || parsed.type === 'passage' ? parsed.type : 'word';
         console.log('[wordbook] Auto-saving:', word.substring(0, 50), 'type:', wordType, 'has_image:', !!result.imageBase64);
         saveWordToWordbook(word, result.translation, wordType, result.sourceLanguage, result.targetLanguage, result.imageBase64)
           .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
           .catch((err) => console.error('[wordbook] Auto-save failed:', err));
       }
-    }
-  }, [result, parsed]);
-
-  // Manual save to wordbook (for passage type)
-  const handleSaveToWordbook = useCallback(async () => {
-    if (!result?.translation || !parsed) return;
-    const word = parsed.source?.substring(0, 80) || 'passage';
-    try {
-      await saveWordToWordbook(word, result.translation, 'passage', result.sourceLanguage, result.targetLanguage, result.imageBase64);
-      setSavedToWordbook(true);
-      console.log('[wordbook] Manual save success (passage)');
-    } catch (err) {
-      console.error('[wordbook] Manual save failed:', err);
     }
   }, [result, parsed]);
 
@@ -506,19 +485,6 @@ export default function ResultCard() {
 
       {/* Footer actions */}
       <div className="flex justify-end gap-1 px-3 pb-2 pt-1">
-        {/* Save to wordbook button - only shown for passage type */}
-        {parsed?.type === 'passage' && !savedToWordbook && (
-          <button onClick={handleSaveToWordbook}
-            className="text-gray-400 hover:text-indigo-500 transition-colors p-1.5 rounded hover:bg-gray-100"
-            title="保存到单词本" disabled={loading || !!error}>
-            <BookmarkPlus className="w-3.5 h-3.5" />
-          </button>
-        )}
-        {parsed?.type === 'passage' && savedToWordbook && (
-          <span className="text-green-500 p-1.5" title="已保存到单词本">
-            <Check className="w-3.5 h-3.5" />
-          </span>
-        )}
         <button onClick={handleRetry}
           className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded hover:bg-gray-100"
           title="重新翻译" disabled={loading}>

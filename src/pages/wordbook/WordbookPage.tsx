@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Star, Trash2, BookOpen, RefreshCw, Columns, Image, X } from 'lucide-react';
+import { Search, Star, Trash2, BookOpen, RefreshCw, Columns, Image, X, Filter } from 'lucide-react';
 import type { WordEntry } from '../../types/wordbook';
 import { getAllWords, toggleStarWord, deleteWordFromWordbook } from '../../lib/tauri-api';
 import { parseXmlTranslation, formatTranslation } from '../../lib/xml-parser';
@@ -36,6 +36,7 @@ export default function WordbookPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'starred'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'word' | 'phrase' | 'passage'>('all');
   const [sortBy, setSortBy] = useState<'time' | 'count'>('time');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -90,6 +91,7 @@ export default function WordbookPage() {
   const filteredWords = words
     .filter(w => {
       if (filter === 'starred' && !w.starred) return false;
+      if (typeFilter !== 'all' && (w.wordType || 'word') !== typeFilter) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return w.word.toLowerCase().includes(q) || w.translation.toLowerCase().includes(q);
@@ -107,7 +109,7 @@ export default function WordbookPage() {
   const paginatedWords = filteredWords.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
 
   // Reset to page 1 when filter/search changes
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, filter, sortBy]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filter, typeFilter, sortBy]);
 
   // Stats
   const totalCount = words.length;
@@ -196,6 +198,25 @@ export default function WordbookPage() {
         >
           ⭐ Starred Only
         </button>
+
+        {/* Type Filter */}
+        <div className="relative flex items-center">
+          <Filter className="w-3.5 h-3.5 absolute left-2.5 text-gray-400 pointer-events-none" />
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'word' | 'phrase' | 'passage')}
+            className={`pl-8 pr-3 py-2 text-sm rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none cursor-pointer ${
+              typeFilter !== 'all'
+                ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                : 'border-gray-200 text-gray-500'
+            }`}
+          >
+            <option value="all">All Types</option>
+            <option value="word">📝 Word</option>
+            <option value="phrase">💬 Phrase</option>
+            <option value="passage">📄 Passage</option>
+          </select>
+        </div>
 
         {/* Column Picker */}
         <div className="relative">
