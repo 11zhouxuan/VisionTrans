@@ -36,7 +36,7 @@ export default function WordbookPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'starred'>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'word' | 'phrase' | 'passage'>('all');
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set(['word', 'phrase', 'passage']));
   const [sortBy, setSortBy] = useState<'time' | 'count'>('time');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -91,7 +91,7 @@ export default function WordbookPage() {
   const filteredWords = words
     .filter(w => {
       if (filter === 'starred' && !w.starred) return false;
-      if (typeFilter !== 'all' && (w.wordType || 'word') !== typeFilter) return false;
+      if (typeFilter.size < 3 && !typeFilter.has(w.wordType || 'word')) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return w.word.toLowerCase().includes(q) || w.translation.toLowerCase().includes(q);
@@ -199,23 +199,39 @@ export default function WordbookPage() {
           ⭐ Starred Only
         </button>
 
-        {/* Type Filter */}
-        <div className="relative flex items-center">
-          <Filter className="w-3.5 h-3.5 absolute left-2.5 text-gray-400 pointer-events-none" />
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'word' | 'phrase' | 'passage')}
-            className={`pl-8 pr-3 py-2 text-sm rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none cursor-pointer ${
-              typeFilter !== 'all'
-                ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
-                : 'border-gray-200 text-gray-500'
-            }`}
-          >
-            <option value="all">All Types</option>
-            <option value="word">📝 Word</option>
-            <option value="phrase">💬 Phrase</option>
-            <option value="passage">📄 Passage</option>
-          </select>
+        {/* Type Filter - multi-select toggle buttons */}
+        <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5">
+          <Filter className="w-3.5 h-3.5 ml-2 text-gray-400 flex-shrink-0" />
+          {([
+            { key: 'word', label: '📝 Word', activeClass: 'bg-blue-100 text-blue-700 font-medium' },
+            { key: 'phrase', label: '💬 Phrase', activeClass: 'bg-purple-100 text-purple-700 font-medium' },
+            { key: 'passage', label: '📄 Passage', activeClass: 'bg-teal-100 text-teal-700 font-medium' },
+          ] as const).map(({ key, label, activeClass }) => {
+            const active = typeFilter.has(key);
+            return (
+              <button
+                key={key}
+                onClick={() => {
+                  setTypeFilter(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) {
+                      if (next.size > 1) next.delete(key);
+                    } else {
+                      next.add(key);
+                    }
+                    return next;
+                  });
+                }}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                  active
+                    ? activeClass
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Column Picker */}
