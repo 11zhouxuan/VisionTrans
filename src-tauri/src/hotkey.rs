@@ -231,7 +231,6 @@ fn create_overlay_window(
         .skip_taskbar(true)
         .resizable(false)
         .visible(false)
-        .visible_on_all_workspaces(true)
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
@@ -260,18 +259,11 @@ fn create_overlay_window(
                         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                         let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
 
-                        // Show window WITHOUT activating the app:
-                        // 1. setIsVisible:YES makes the window visible without ordering/activating
-                        // 2. orderWindow:relativeTo: orders it without activating
-                        // 3. makeKeyWindow makes it receive keyboard events
-                        // This avoids makeKeyAndOrderFront: which activates the app
-                        let yes = Bool::YES;
-                        let _: () = msg_send![ns_window, setIsVisible: yes];
-                        // NSWindowAbove = 1, relativeTo: 0 means above all
-                        let _: () = msg_send![ns_window, orderWindow: 1_i64 relativeTo: 0_i64];
-                        let _: () = msg_send![ns_window, makeKeyWindow];
+                        // Show window via makeKeyAndOrderFront (confirmed to fix transparency)
+                        let nil: *mut AnyObject = std::ptr::null_mut();
+                        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
 
-                        eprintln!("[overlay] Shown via setIsVisible+orderWindow+makeKeyWindow (no activate)");
+                        eprintln!("[overlay] Shown via makeKeyAndOrderFront on main thread");
                     }
                 }
             });
