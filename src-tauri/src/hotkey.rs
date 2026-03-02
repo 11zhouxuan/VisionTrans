@@ -236,29 +236,54 @@ fn create_overlay_window(
     }
 
     // Show window after a brief delay to let WebView initialize
-    let win = window.clone();
     #[cfg(target_os = "macos")]
-    let app_handle = app.clone();
+    {
+        // On macOS, use orderFrontRegardless to show without activating the app.
+        // Combined with CGDisplayCapture, this keeps the overlay on the current
+        // fullscreen Space without switching.
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let captured = display_captured;
+            let _ = app_handle.run_on_main_thread(move || {
+                use objc2::msg_send;
+                use objc2::runtime::{AnyClass, AnyObject};
 
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = win.show();
-        let _ = win.set_focus();
-
-        // On macOS, release the captured display after the window is shown.
-        // The overlay is now visible on the current Space (including fullscreen).
-        #[cfg(target_os = "macos")]
-        {
-            if display_captured {
-                std::thread::sleep(std::time::Duration::from_millis(100));
                 unsafe {
-                    let display_id = CGMainDisplayID();
-                    CGDisplayRelease(display_id);
-                    eprintln!("[overlay] CGDisplayRelease - display unlocked");
+                    let cls = AnyClass::get(c"NSApplication").unwrap();
+                    let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
+                    let windows: *mut AnyObject = msg_send![ns_app, windows];
+                    let count: usize = msg_send![windows, count];
+
+                    if count > 0 {
+                        let ns_window: *mut AnyObject = msg_send![windows, lastObject];
+                        if !ns_window.is_null() {
+                            // Show without activating the app
+                            let _: () = msg_send![ns_window, orderFrontRegardless];
+                            eprintln!("[overlay] Shown via orderFrontRegardless");
+                        }
+                    }
+
+                    // Release display capture after window is shown
+                    if captured {
+                        let display_id = CGMainDisplayID();
+                        CGDisplayRelease(display_id);
+                        eprintln!("[overlay] CGDisplayRelease - display unlocked");
+                    }
                 }
-            }
-        }
-    });
+            });
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let win = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = win.show();
+            let _ = win.set_focus();
+        });
+    }
 
     Ok(())
 }
