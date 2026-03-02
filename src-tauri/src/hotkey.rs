@@ -149,17 +149,6 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-// On macOS, declare Core Graphics functions for display capture.
-// CGDisplayCapture prevents macOS from switching Spaces during window creation,
-// which is essential for showing overlays above fullscreen apps.
-#[cfg(target_os = "macos")]
-extern "C" {
-    fn CGMainDisplayID() -> u32;
-    fn CGDisplayCaptureWithOptions(display: u32, options: u32) -> i32;
-    fn CGDisplayRelease(display: u32) -> i32;
-    fn CGShieldingWindowLevel() -> i32;
-}
-
 fn create_overlay_window(
     app: &AppHandle,
     screenshot: &crate::state::ScreenshotData,
@@ -174,22 +163,6 @@ fn create_overlay_window(
     let overlay_w = screenshot.logical_width as f64;
     let overlay_h = screenshot.logical_height as f64;
 
-    // On macOS, capture the display BEFORE creating the window.
-    // This prevents macOS from switching Spaces when a new window is created
-    // while a fullscreen app is active. kCGCaptureNoFill = 1 means no black fill.
-    #[cfg(target_os = "macos")]
-    let display_captured = unsafe {
-        let display_id = CGMainDisplayID();
-        let result = CGDisplayCaptureWithOptions(display_id, 1); // kCGCaptureNoFill
-        if result == 0 {
-            eprintln!("[overlay] CGDisplayCapture succeeded (display locked, no Space switch)");
-            true
-        } else {
-            eprintln!("[overlay] CGDisplayCapture failed ({}), falling back to normal", result);
-            false
-        }
-    };
-
     // Create window initially hidden, then show after WebView loads
     let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
         .title("")
@@ -203,7 +176,10 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // On macOS, set the overlay window level and collection behavior
+    // On macOS, configure the overlay window to appear above fullscreen apps.
+    // Key: set collectionBehavior with canJoinAllSpaces + fullScreenAuxiliary +
+    // stationary + ignoresCycle, and set level to screenSaver (1000).
+    // Then show via makeKeyAndOrderFront WITHOUT calling NSApp.activate().
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
@@ -219,17 +195,19 @@ fn create_overlay_window(
                 let overlay_ns_window: *mut AnyObject = msg_send![windows, lastObject];
 
                 if !overlay_ns_window.is_null() {
-                    // Use CGShieldingWindowLevel (the level used by display capture)
-                    // This is the highest standard level and appears above everything
-                    let shield_level = CGShieldingWindowLevel() as i64;
-                    let _: () = msg_send![overlay_ns_window, setLevel: shield_level];
+                    // NSWindow.Level.screenSaver = 1000
+                    // High enough to appear above fullscreen apps, Menu Bar, and Dock
+                    let _: () = msg_send![overlay_ns_window, setLevel: 1000_i64];
 
-                    // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
-                    // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
-                    let behavior: usize = (1 << 0) | (1 << 8);
+                    // Collection behavior flags:
+                    // canJoinAllSpaces    (1 << 0) = 1   - appear on all Spaces including fullscreen
+                    // fullScreenAuxiliary (1 << 8) = 256 - float above fullscreen windows
+                    // stationary          (1 << 4) = 16  - don't move with Mission Control
+                    // ignoresCycle        (1 << 6) = 64  - don't appear in Cmd+Tab
+                    let behavior: usize = (1 << 0) | (1 << 8) | (1 << 4) | (1 << 6);
                     let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
 
-                    eprintln!("[overlay] Set window level={}, behavior=canJoinAllSpaces|fullScreenAuxiliary", shield_level);
+                    eprintln!("[overlay] Set level=1000(screenSaver), behavior=canJoinAllSpaces|fullScreenAuxiliary|stationary|ignoresCycle ({})", behavior);
                 }
             }
         }
@@ -238,13 +216,13 @@ fn create_overlay_window(
     // Show window after a brief delay to let WebView initialize
     #[cfg(target_os = "macos")]
     {
-        // On macOS, use orderFrontRegardless to show without activating the app.
-        // Combined with CGDisplayCapture, this keeps the overlay on the current
-        // fullscreen Space without switching.
+        // On macOS, use makeKeyAndOrderFront via run_on_main_thread.
+        // IMPORTANT: Do NOT call NSApp.activate() - that would trigger a Space switch.
+        // makeKeyAndOrderFront alone makes the window visible and key (receives keyboard
+        // events like Escape) without activating the app.
         let app_handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(500));
-            let captured = display_captured;
             let _ = app_handle.run_on_main_thread(move || {
                 use objc2::msg_send;
                 use objc2::runtime::{AnyClass, AnyObject};
@@ -258,17 +236,12 @@ fn create_overlay_window(
                     if count > 0 {
                         let ns_window: *mut AnyObject = msg_send![windows, lastObject];
                         if !ns_window.is_null() {
-                            // Show without activating the app
-                            let _: () = msg_send![ns_window, orderFrontRegardless];
-                            eprintln!("[overlay] Shown via orderFrontRegardless");
+                            // makeKeyAndOrderFront: shows window + makes it key window
+                            // (receives keyboard events) WITHOUT activating the app
+                            let nil: *mut AnyObject = std::ptr::null_mut();
+                            let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+                            eprintln!("[overlay] Shown via makeKeyAndOrderFront (no NSApp.activate)");
                         }
-                    }
-
-                    // Release display capture after window is shown
-                    if captured {
-                        let display_id = CGMainDisplayID();
-                        CGDisplayRelease(display_id);
-                        eprintln!("[overlay] CGDisplayRelease - display unlocked");
                     }
                 }
             });
