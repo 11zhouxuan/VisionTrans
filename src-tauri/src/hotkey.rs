@@ -160,14 +160,14 @@ fn create_overlay_window(
         let _ = window.close();
     }
 
+    let overlay_w = screenshot.logical_width as f64;
+    let overlay_h = screenshot.logical_height as f64;
+
     // Create window initially hidden, then show after WebView loads
     // This prevents the "flash/bounce" effect
     let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
         .title("")
-        .inner_size(
-            screenshot.logical_width as f64,
-            screenshot.logical_height as f64,
-        )
+        .inner_size(overlay_w, overlay_h)
         .position(0.0, 0.0)
         .decorations(false)
         .always_on_top(true)
@@ -177,28 +177,63 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // On macOS, set the overlay window to appear on all Spaces (including fullscreen app Spaces)
-    // This prevents the window from jumping to a different Space when a fullscreen app is active
+    // On macOS, set the overlay window to appear above fullscreen apps
+    // We need:
+    //   1. High window level (NSScreenSaverWindowLevel = 1000) to appear above fullscreen apps
+    //   2. NSWindowCollectionBehaviorCanJoinAllSpaces so it shows on all Spaces
+    //   3. NSWindowCollectionBehaviorFullScreenAuxiliary so it can coexist with fullscreen windows
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::{AnyClass, AnyObject};
 
         unsafe {
-            // Use raw msg_send! to avoid MainThreadMarker requirement
             let cls = AnyClass::get(c"NSApplication").unwrap();
-            let app: *mut AnyObject = msg_send![cls, sharedApplication];
-            let windows: *mut AnyObject = msg_send![app, windows];
+            let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
+            let windows: *mut AnyObject = msg_send![ns_app, windows];
             let count: usize = msg_send![windows, count];
-            if count > 0 {
-                let last_window: *mut AnyObject = msg_send![windows, lastObject];
-                if !last_window.is_null() {
-                    // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
-                    // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
-                    let behavior: usize = (1 << 0) | (1 << 8);
-                    let _: () = msg_send![last_window, setCollectionBehavior: behavior];
-                    eprintln!("[overlay] Set NSWindowCollectionBehavior: canJoinAllSpaces | fullScreenAuxiliary");
+
+            // Find the overlay window by matching frame size (most reliable)
+            let mut overlay_ns_window: *mut AnyObject = std::ptr::null_mut();
+            for i in (0..count).rev() {
+                let w: *mut AnyObject = msg_send![windows, objectAtIndex: i];
+                if w.is_null() { continue; }
+
+                // Get the window's frame
+                // NSRect is { origin: { x, y }, size: { width, height } }
+                #[repr(C)]
+                #[derive(Debug)]
+                struct NSRect { x: f64, y: f64, w: f64, h: f64 }
+                let frame: NSRect = msg_send![w, frame];
+
+                // Match by size (the overlay window matches the screen dimensions)
+                if (frame.w - overlay_w).abs() < 2.0 && (frame.h - overlay_h).abs() < 2.0 {
+                    overlay_ns_window = w;
+                    eprintln!("[overlay] Found NSWindow by frame match: {}x{}", frame.w, frame.h);
+                    break;
                 }
+            }
+
+            if overlay_ns_window.is_null() {
+                // Fallback: use the last window (most recently created)
+                if count > 0 {
+                    overlay_ns_window = msg_send![windows, lastObject];
+                    eprintln!("[overlay] Fallback: using lastObject as overlay window");
+                }
+            }
+
+            if !overlay_ns_window.is_null() {
+                // Set window level to NSScreenSaverWindowLevel (1000)
+                // This is high enough to appear above fullscreen apps
+                let _: () = msg_send![overlay_ns_window, setLevel: 1000_i64];
+
+                // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
+                // NSWindowCollectionBehaviorMoveToActiveSpace (1 << 1) = 2
+                // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
+                let behavior: usize = (1 << 0) | (1 << 1) | (1 << 8);
+                let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
+
+                eprintln!("[overlay] Set window level=1000, behavior=canJoinAllSpaces|moveToActiveSpace|fullScreenAuxiliary");
             }
         }
     }
