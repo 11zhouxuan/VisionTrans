@@ -149,6 +149,17 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+// On macOS, declare Core Graphics functions for display capture.
+// CGDisplayCapture prevents macOS from switching Spaces during window creation,
+// which is essential for showing overlays above fullscreen apps.
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn CGMainDisplayID() -> u32;
+    fn CGDisplayCaptureWithOptions(display: u32, options: u32) -> i32;
+    fn CGDisplayRelease(display: u32) -> i32;
+    fn CGShieldingWindowLevel() -> i32;
+}
+
 fn create_overlay_window(
     app: &AppHandle,
     screenshot: &crate::state::ScreenshotData,
@@ -163,8 +174,23 @@ fn create_overlay_window(
     let overlay_w = screenshot.logical_width as f64;
     let overlay_h = screenshot.logical_height as f64;
 
+    // On macOS, capture the display BEFORE creating the window.
+    // This prevents macOS from switching Spaces when a new window is created
+    // while a fullscreen app is active. kCGCaptureNoFill = 1 means no black fill.
+    #[cfg(target_os = "macos")]
+    let display_captured = unsafe {
+        let display_id = CGMainDisplayID();
+        let result = CGDisplayCaptureWithOptions(display_id, 1); // kCGCaptureNoFill
+        if result == 0 {
+            eprintln!("[overlay] CGDisplayCapture succeeded (display locked, no Space switch)");
+            true
+        } else {
+            eprintln!("[overlay] CGDisplayCapture failed ({}), falling back to normal", result);
+            false
+        }
+    };
+
     // Create window initially hidden, then show after WebView loads
-    // This prevents the "flash/bounce" effect
     let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
         .title("")
         .inner_size(overlay_w, overlay_h)
@@ -177,13 +203,7 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // On macOS, set the overlay window to appear above fullscreen apps
-    // We need:
-    //   1. High window level to appear above fullscreen apps
-    //   2. NSWindowCollectionBehaviorCanJoinAllSpaces so it shows on all Spaces
-    //   3. NSWindowCollectionBehaviorFullScreenAuxiliary so it can coexist with fullscreen windows
-    //   4. Show via orderFrontRegardless (not show/set_focus) to avoid activating the app
-    //      which would cause macOS to switch away from the fullscreen Space
+    // On macOS, set the overlay window level and collection behavior
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
@@ -199,67 +219,46 @@ fn create_overlay_window(
                 let overlay_ns_window: *mut AnyObject = msg_send![windows, lastObject];
 
                 if !overlay_ns_window.is_null() {
-                    // NSPopUpMenuWindowLevel = 101 (above fullscreen apps)
-                    let _: () = msg_send![overlay_ns_window, setLevel: 101_i64];
+                    // Use CGShieldingWindowLevel (the level used by display capture)
+                    // This is the highest standard level and appears above everything
+                    let shield_level = CGShieldingWindowLevel() as i64;
+                    let _: () = msg_send![overlay_ns_window, setLevel: shield_level];
 
                     // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
                     // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
                     let behavior: usize = (1 << 0) | (1 << 8);
                     let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
 
-                    eprintln!("[overlay] Set window level=101, behavior=canJoinAllSpaces|fullScreenAuxiliary");
+                    eprintln!("[overlay] Set window level={}, behavior=canJoinAllSpaces|fullScreenAuxiliary", shield_level);
                 }
             }
         }
     }
 
     // Show window after a brief delay to let WebView initialize
+    let win = window.clone();
     #[cfg(target_os = "macos")]
-    {
-        // On macOS, use run_on_main_thread + orderFrontRegardless to show the window
-        // WITHOUT activating the app. This prevents macOS from switching away from
-        // the current fullscreen Space.
-        // NOTE: We intentionally do NOT call makeKeyWindow here because that would
-        // implicitly activate the app and cause a Space switch. The window will still
-        // receive mouse events. Keyboard events (Escape) won't work directly, but
-        // the overlay has close buttons and the global hotkey still works.
-        let app_handle = app.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = app_handle.run_on_main_thread(move || {
-                use objc2::msg_send;
-                use objc2::runtime::{AnyClass, AnyObject};
+    let app_handle = app.clone();
 
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let _ = win.show();
+        let _ = win.set_focus();
+
+        // On macOS, release the captured display after the window is shown.
+        // The overlay is now visible on the current Space (including fullscreen).
+        #[cfg(target_os = "macos")]
+        {
+            if display_captured {
+                std::thread::sleep(std::time::Duration::from_millis(100));
                 unsafe {
-                    let cls = AnyClass::get(c"NSApplication").unwrap();
-                    let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
-                    let windows: *mut AnyObject = msg_send![ns_app, windows];
-                    let count: usize = msg_send![windows, count];
-
-                    if count > 0 {
-                        let ns_window: *mut AnyObject = msg_send![windows, lastObject];
-                        if !ns_window.is_null() {
-                            // orderFrontRegardless shows the window without activating the app
-                            let _: () = msg_send![ns_window, orderFrontRegardless];
-                            // Do NOT call makeKeyWindow - it implicitly activates the app
-                            // and causes macOS to switch away from fullscreen Spaces
-                            eprintln!("[overlay] Shown via orderFrontRegardless only (no activation)");
-                        }
-                    }
+                    let display_id = CGMainDisplayID();
+                    CGDisplayRelease(display_id);
+                    eprintln!("[overlay] CGDisplayRelease - display unlocked");
                 }
-            });
-        });
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let win = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = win.show();
-            let _ = win.set_focus();
-        });
-    }
+            }
+        }
+    });
 
     Ok(())
 }
