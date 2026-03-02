@@ -213,33 +213,51 @@ fn create_overlay_window(
     };
 
     // Show window after a brief delay to let WebView initialize
-    let win = window.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = win.show();
-        let _ = win.set_focus();
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, use makeKeyAndOrderFront: directly on the NSWindow.
+        // Do NOT use Tauri's win.show() or win.set_focus() because they
+        // internally call NSApp.activate() which triggers a Space switch.
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
 
-        // On macOS, re-apply properties after show() in case Tauri overrides them
-        #[cfg(target_os = "macos")]
-        {
-            if ns_window_addr != 0 {
-                use objc2::msg_send;
-                use objc2::runtime::AnyObject;
+            let addr = ns_window_addr;
+            let _ = app_handle.run_on_main_thread(move || {
+                if addr != 0 {
+                    use objc2::msg_send;
+                    use objc2::runtime::AnyObject;
 
-                // Note: This runs on a background thread, but setLevel/setCollectionBehavior
-                // are generally safe to call from any thread on modern macOS.
-                // If this causes issues, we can use run_on_main_thread.
-                unsafe {
-                    let ns_window = ns_window_addr as *mut AnyObject;
-                    let _: () = msg_send![ns_window, setLevel: 1000_i64];
-                    let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
-                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                    eprintln!("[overlay] Post-show: re-applied NSWindow properties");
+                    unsafe {
+                        let ns_window = addr as *mut AnyObject;
+
+                        // Re-apply properties to ensure they weren't reset
+                        let _: () = msg_send![ns_window, setLevel: 1000_i64];
+                        let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                        let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+
+                        // Show window and make it key (for keyboard events like Escape)
+                        // WITHOUT calling NSApp.activate() - this is the key difference
+                        let nil: *mut AnyObject = std::ptr::null_mut();
+                        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+
+                        eprintln!("[overlay] Shown via direct makeKeyAndOrderFront (no NSApp.activate)");
+                    }
                 }
-            }
-        }
-    });
+            });
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let win = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = win.show();
+            let _ = win.set_focus();
+        });
+    }
 
     Ok(())
 }
