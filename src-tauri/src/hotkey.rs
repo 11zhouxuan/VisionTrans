@@ -172,57 +172,43 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // Get NSWindow pointer on current thread (before spawning background thread)
-    #[cfg(target_os = "macos")]
-    let ns_window_addr: usize = window.ns_window()
-        .map(|ptr| ptr as usize)
-        .unwrap_or(0);
-
-    // Show window after WebView initializes, following expert's recommended order:
+    // Show window immediately (no delay) following expert's recommended order:
     // 1. window.show()
     // 2. window.set_always_on_top(true)
-    // 3. Native API: set level + collectionBehavior (overrides Tauri's defaults)
+    // 3. Native API: set level + collectionBehavior
     // 4. window.set_focus()
-    let win = window.clone();
+    // The WebView will load the screenshot content in the background.
+
+    // Step 1: Show the window immediately
+    let _ = window.show();
+
+    // Step 2: Force always on top
+    let _ = window.set_always_on_top(true);
+
+    // Step 3: Override with native NSWindow properties
     #[cfg(target_os = "macos")]
-    let app_handle = app.clone();
-
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(150));
-
-        // Step 1: Show the window
-        let _ = win.show();
-        eprintln!("[overlay] Step 1: show()");
-
-        // Step 2: Force always on top via Tauri API
-        let _ = win.set_always_on_top(true);
-        eprintln!("[overlay] Step 2: set_always_on_top(true)");
-
-        // Step 3: Override with native NSWindow properties on main thread
-        // This MUST be after show() because Tauri resets properties during show
-        #[cfg(target_os = "macos")]
-        {
-            let addr = ns_window_addr;
-            let _ = app_handle.run_on_main_thread(move || {
-                if addr != 0 {
-                    use objc2::msg_send;
-                    use objc2::runtime::AnyObject;
-                    unsafe {
-                        let ns_window = addr as *mut AnyObject;
-                        let _: () = msg_send![ns_window, setLevel: 2000_i64];
-                        let behavior: usize = 1 | 16 | 64 | 256;
-                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                        let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                        eprintln!("[overlay] Step 3: native props set (level=2000, behavior={})", behavior);
-                    }
+    {
+        let ns_window_addr: usize = window.ns_window()
+            .map(|ptr| ptr as usize)
+            .unwrap_or(0);
+        let app_handle = app.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            if ns_window_addr != 0 {
+                use objc2::msg_send;
+                use objc2::runtime::AnyObject;
+                unsafe {
+                    let ns_window = ns_window_addr as *mut AnyObject;
+                    let _: () = msg_send![ns_window, setLevel: 2000_i64];
+                    let behavior: usize = 1 | 16 | 64 | 256;
+                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
                 }
-            });
-        }
+            }
+        });
+    }
 
-        // Step 4: Get focus (keyboard events like Escape)
-        let _ = win.set_focus();
-        eprintln!("[overlay] Step 4: set_focus()");
-    });
+    // Step 4: Get focus
+    let _ = window.set_focus();
 
     Ok(())
 }
