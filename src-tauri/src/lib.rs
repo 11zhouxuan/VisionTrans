@@ -59,6 +59,15 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
+            // On macOS, set activation policy to Accessory.
+            // This prevents Space switching when showing windows over fullscreen apps.
+            // Accessory apps don't appear in Dock and don't trigger Space switches.
+            #[cfg(target_os = "macos")]
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                eprintln!("[setup] Set ActivationPolicy::Accessory");
+            }
+
             // Setup macOS application menu with "Settings" option
             #[cfg(target_os = "macos")]
             {

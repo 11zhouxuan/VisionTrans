@@ -17,16 +17,8 @@ pub fn open_wordbook_public(app: &AppHandle) {
 }
 
 fn open_settings(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::NSApplication;
-        use objc2_foundation::MainThreadMarker;
-        if let Some(mtm) = MainThreadMarker::new() {
-            let ns_app = NSApplication::sharedApplication(mtm);
-            #[allow(deprecated)]
-            ns_app.activateIgnoringOtherApps(true);
-        }
-    }
+    // NOTE: Do NOT call activateIgnoringOtherApps - it causes Space switching.
+    // With ActivationPolicy::Accessory, show() + set_focus() is sufficient.
 
     if let Some(window) = app.get_webview_window("settings") {
         let _ = window.show();
@@ -53,16 +45,7 @@ fn open_settings(app: &AppHandle) {
 }
 
 fn open_wordbook(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::NSApplication;
-        use objc2_foundation::MainThreadMarker;
-        if let Some(mtm) = MainThreadMarker::new() {
-            let ns_app = NSApplication::sharedApplication(mtm);
-            #[allow(deprecated)]
-            ns_app.activateIgnoringOtherApps(true);
-        }
-    }
+    // NOTE: Do NOT call activateIgnoringOtherApps - it causes Space switching.
 
     if let Some(window) = app.get_webview_window("wordbook") {
         let _ = window.show();

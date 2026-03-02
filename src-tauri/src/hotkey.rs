@@ -23,7 +23,6 @@ pub fn register_hotkey(app: &AppHandle, hotkey_str: &str) -> Result<(), AppError
             }
         })
         .map_err(|e| AppError::Internal(format!("Failed to register hotkey '{}': {}", hotkey_str, e)))?;
-
     Ok(())
 }
 
@@ -82,14 +81,11 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         let active_count = state.active_count();
         if active_count >= max_concurrency {
             *state.is_capturing.lock().unwrap() = false;
-            let notif_result = app.notification()
+            let _ = app.notification()
                 .builder()
                 .title("VisionTrans")
                 .body(format!("当前已有 {} 个翻译任务进行中，请等待完成后再试", active_count))
                 .show();
-            if let Err(e) = notif_result {
-                eprintln!("[hotkey] Notification failed: {}", e);
-            }
             #[cfg(target_os = "macos")]
             {
                 let msg = format!("当前已有 {} 个翻译任务进行中，请等待完成后再试", active_count);
@@ -123,6 +119,33 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Set native NSWindow properties for fullscreen overlay.
+/// Must be called AFTER window.show() as Tauri may reset properties during show.
+#[cfg(target_os = "macos")]
+fn set_overlay_ns_window_props(window: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+
+    if let Ok(ptr) = window.ns_window() {
+        let ns_window = ptr as *mut AnyObject;
+        unsafe {
+            // Window level 2000 (kCGScreenSaverWindowLevelKey range)
+            // Higher than 1000 to ensure it covers everything
+            let _: () = msg_send![ns_window, setLevel: 2000_i64];
+
+            // Collection behavior:
+            // canJoinAllSpaces (1) | stationary (16) | ignoresCycle (64) | fullScreenAuxiliary (256)
+            let behavior: usize = 1 | 16 | 64 | 256;
+            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+
+            // Ensure mouse events are received
+            let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+
+            eprintln!("[overlay] Native props set: level=2000, behavior={}", behavior);
+        }
+    }
+}
+
 fn create_overlay_window(
     app: &AppHandle,
     screenshot: &crate::state::ScreenshotData,
@@ -149,61 +172,35 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // On macOS, configure NSWindow and show via native API
-    #[cfg(target_os = "macos")]
-    {
-        let ns_window_addr: usize = match window.ns_window() {
-            Ok(ptr) => {
-                use objc2::msg_send;
-                use objc2::runtime::AnyObject;
-                let ns_window = ptr as *mut AnyObject;
-                unsafe {
-                    let _: () = msg_send![ns_window, setLevel: 1000_i64];
-                    let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
-                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                    eprintln!("[overlay] NSWindow configured: level=1000, behavior={}", behavior);
-                }
-                ptr as usize
-            }
-            Err(e) => {
-                eprintln!("[overlay] Failed to get ns_window: {}", e);
-                0
-            }
-        };
+    // Show window after WebView initializes, following expert's recommended order:
+    // 1. window.show()
+    // 2. window.set_always_on_top(true)
+    // 3. Native API: set level + collectionBehavior (overrides Tauri's defaults)
+    // 4. window.set_focus()
+    let win = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
-        let app_handle = app.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            let addr = ns_window_addr;
-            let _ = app_handle.run_on_main_thread(move || {
-                if addr != 0 {
-                    use objc2::msg_send;
-                    use objc2::runtime::AnyObject;
-                    unsafe {
-                        let ns_window = addr as *mut AnyObject;
-                        let _: () = msg_send![ns_window, setLevel: 1000_i64];
-                        let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
-                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                        let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                        let nil: *mut AnyObject = std::ptr::null_mut();
-                        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-                        eprintln!("[overlay] Shown via makeKeyAndOrderFront");
-                    }
-                }
-            });
-        });
-    }
+        // Step 1: Show the window
+        let _ = win.show();
+        eprintln!("[overlay] Step 1: show()");
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        let win = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = win.show();
-            let _ = win.set_focus();
-        });
-    }
+        // Step 2: Force always on top via Tauri API
+        let _ = win.set_always_on_top(true);
+        eprintln!("[overlay] Step 2: set_always_on_top(true)");
+
+        // Step 3: Override with native NSWindow properties
+        // This MUST be after show() because Tauri resets properties during show
+        #[cfg(target_os = "macos")]
+        {
+            set_overlay_ns_window_props(&win);
+            eprintln!("[overlay] Step 3: native props applied");
+        }
+
+        // Step 4: Get focus (keyboard events like Escape)
+        let _ = win.set_focus();
+        eprintln!("[overlay] Step 4: set_focus()");
+    });
 
     Ok(())
 }

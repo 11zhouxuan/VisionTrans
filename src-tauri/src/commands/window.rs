@@ -6,17 +6,9 @@ use crate::state::AppState;
 /// Open settings window
 #[tauri::command]
 pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
-    // On macOS with LSUIElement, we need to activate the app to show windows
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::NSApplication;
-        use objc2_foundation::MainThreadMarker;
-        if let Some(mtm) = MainThreadMarker::new() {
-            let ns_app = NSApplication::sharedApplication(mtm);
-            #[allow(deprecated)]
-            ns_app.activateIgnoringOtherApps(true);
-        }
-    }
+    // NOTE: Do NOT call activateIgnoringOtherApps here.
+    // It causes macOS to switch Spaces when a fullscreen app is active.
+    // With ActivationPolicy::Accessory, show() + set_focus() is sufficient.
 
     // Check if settings window already exists
     if let Some(window) = app.get_webview_window("settings") {
