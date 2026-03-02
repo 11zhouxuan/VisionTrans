@@ -176,53 +176,25 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // On macOS, configure the overlay window to appear above fullscreen apps.
-    // Key: set collectionBehavior with canJoinAllSpaces + fullScreenAuxiliary +
-    // stationary + ignoresCycle, and set level to screenSaver (1000).
-    // Then show via makeKeyAndOrderFront WITHOUT calling NSApp.activate().
+    // Show window after a brief delay to let WebView initialize.
+    // On macOS, we show first via Tauri, then IMMEDIATELY set the NSWindow
+    // properties on the main thread. This ensures we're modifying the
+    // correct window AFTER Tauri has fully initialized it.
+    let win = window.clone();
     #[cfg(target_os = "macos")]
-    {
-        use objc2::msg_send;
-        use objc2::runtime::{AnyClass, AnyObject};
+    let app_handle = app.clone();
 
-        unsafe {
-            let cls = AnyClass::get(c"NSApplication").unwrap();
-            let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
-            let windows: *mut AnyObject = msg_send![ns_app, windows];
-            let count: usize = msg_send![windows, count];
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
-            if count > 0 {
-                let overlay_ns_window: *mut AnyObject = msg_send![windows, lastObject];
+        // Show the window first (Tauri handles main thread dispatch internally)
+        let _ = win.show();
 
-                if !overlay_ns_window.is_null() {
-                    // NSWindow.Level.screenSaver = 1000
-                    // High enough to appear above fullscreen apps, Menu Bar, and Dock
-                    let _: () = msg_send![overlay_ns_window, setLevel: 1000_i64];
-
-                    // Collection behavior flags:
-                    // canJoinAllSpaces    (1 << 0) = 1   - appear on all Spaces including fullscreen
-                    // fullScreenAuxiliary (1 << 8) = 256 - float above fullscreen windows
-                    // stationary          (1 << 4) = 16  - don't move with Mission Control
-                    // ignoresCycle        (1 << 6) = 64  - don't appear in Cmd+Tab
-                    let behavior: usize = (1 << 0) | (1 << 8) | (1 << 4) | (1 << 6);
-                    let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
-
-                    eprintln!("[overlay] Set level=1000(screenSaver), behavior=canJoinAllSpaces|fullScreenAuxiliary|stationary|ignoresCycle ({})", behavior);
-                }
-            }
-        }
-    }
-
-    // Show window after a brief delay to let WebView initialize
-    #[cfg(target_os = "macos")]
-    {
-        // On macOS, use makeKeyAndOrderFront via run_on_main_thread.
-        // IMPORTANT: Do NOT call NSApp.activate() - that would trigger a Space switch.
-        // makeKeyAndOrderFront alone makes the window visible and key (receives keyboard
-        // events like Escape) without activating the app.
-        let app_handle = app.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
+        #[cfg(target_os = "macos")]
+        {
+            // Now set the NSWindow properties on the main thread AFTER show().
+            // This ensures: 1) we modify the correct window, 2) properties
+            // aren't overridden by Tauri's show() internals.
             let _ = app_handle.run_on_main_thread(move || {
                 use objc2::msg_send;
                 use objc2::runtime::{AnyClass, AnyObject};
@@ -233,30 +205,42 @@ fn create_overlay_window(
                     let windows: *mut AnyObject = msg_send![ns_app, windows];
                     let count: usize = msg_send![windows, count];
 
-                    if count > 0 {
-                        let ns_window: *mut AnyObject = msg_send![windows, lastObject];
-                        if !ns_window.is_null() {
-                            // makeKeyAndOrderFront: shows window + makes it key window
-                            // (receives keyboard events) WITHOUT activating the app
-                            let nil: *mut AnyObject = std::ptr::null_mut();
-                            let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-                            eprintln!("[overlay] Shown via makeKeyAndOrderFront (no NSApp.activate)");
+                    // Find the overlay window - it should be the key window now
+                    let ns_window: *mut AnyObject = msg_send![ns_app, keyWindow];
+                    if !ns_window.is_null() {
+                        // NSWindow.Level.screenSaver = 1000
+                        let _: () = msg_send![ns_window, setLevel: 1000_i64];
+
+                        // Collection behavior:
+                        // canJoinAllSpaces    (1 << 0) = 1
+                        // fullScreenAuxiliary (1 << 8) = 256
+                        // stationary          (1 << 4) = 16
+                        // ignoresCycle        (1 << 6) = 64
+                        let behavior: usize = (1 << 0) | (1 << 8) | (1 << 4) | (1 << 6);
+                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+
+                        eprintln!("[overlay] Post-show: set level=1000, behavior={} on keyWindow", behavior);
+                    } else {
+                        eprintln!("[overlay] Warning: no keyWindow found, using lastObject");
+                        if count > 0 {
+                            let ns_window: *mut AnyObject = msg_send![windows, lastObject];
+                            if !ns_window.is_null() {
+                                let _: () = msg_send![ns_window, setLevel: 1000_i64];
+                                let behavior: usize = (1 << 0) | (1 << 8) | (1 << 4) | (1 << 6);
+                                let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                                eprintln!("[overlay] Post-show: set level=1000, behavior={} on lastObject", behavior);
+                            }
                         }
                     }
                 }
             });
-        });
-    }
+        }
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        let win = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = win.show();
+        #[cfg(not(target_os = "macos"))]
+        {
             let _ = win.set_focus();
-        });
-    }
+        }
+    });
 
     Ok(())
 }
