@@ -239,20 +239,13 @@ fn create_overlay_window(
     let ns_window_addr = configure_ns_window(&window);
 
     // Show window after a brief delay to let WebView initialize
-    let win = window.clone();
     #[cfg(target_os = "macos")]
-    let app_handle = app.clone();
-
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = win.show();
-        let _ = win.set_focus();
-        eprintln!("[overlay] Window shown via show() + set_focus()");
-
-        // On macOS, re-apply NSWindow properties after show()+set_focus()
-        // These Tauri calls may reset our custom level/behavior
-        #[cfg(target_os = "macos")]
-        {
+    {
+        // On macOS, use native makeKeyAndOrderFront: via run_on_main_thread.
+        // Do NOT use Tauri's show()/set_focus() - they cause click-through issues.
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
             let addr = ns_window_addr;
             let _ = app_handle.run_on_main_thread(move || {
                 if addr != 0 {
@@ -260,16 +253,30 @@ fn create_overlay_window(
                     use objc2::runtime::AnyObject;
                     unsafe {
                         let ns_window = addr as *mut AnyObject;
+                        // Re-apply all properties
                         let _: () = msg_send![ns_window, setLevel: 1000_i64];
                         let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
                         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                         let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                        eprintln!("[overlay] Post-show: re-applied NSWindow properties");
+                        // Show window natively
+                        let nil: *mut AnyObject = std::ptr::null_mut();
+                        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+                        eprintln!("[overlay] Shown via native makeKeyAndOrderFront on main thread");
                     }
                 }
             });
-        }
-    });
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let win = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = win.show();
+            let _ = win.set_focus();
+        });
+    }
 
     Ok(())
 }
