@@ -23,6 +23,7 @@ fn open_settings(app: &AppHandle) {
         use objc2_foundation::MainThreadMarker;
         if let Some(mtm) = MainThreadMarker::new() {
             let ns_app = NSApplication::sharedApplication(mtm);
+            #[allow(deprecated)]
             ns_app.activateIgnoringOtherApps(true);
         }
     }
@@ -58,6 +59,7 @@ fn open_wordbook(app: &AppHandle) {
         use objc2_foundation::MainThreadMarker;
         if let Some(mtm) = MainThreadMarker::new() {
             let ns_app = NSApplication::sharedApplication(mtm);
+            #[allow(deprecated)]
             ns_app.activateIgnoringOtherApps(true);
         }
     }

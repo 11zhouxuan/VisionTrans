@@ -13,6 +13,7 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
         use objc2_foundation::MainThreadMarker;
         if let Some(mtm) = MainThreadMarker::new() {
             let ns_app = NSApplication::sharedApplication(mtm);
+            #[allow(deprecated)]
             ns_app.activateIgnoringOtherApps(true);
         }
     }

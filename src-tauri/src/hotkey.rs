@@ -185,7 +185,7 @@ fn create_overlay_window(
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
-        use objc2::runtime::{AnyClass, AnyObject};
+        use objc2::runtime::{AnyClass, AnyObject, Bool};
 
         unsafe {
             let cls = AnyClass::get(c"NSApplication").unwrap();
@@ -193,33 +193,24 @@ fn create_overlay_window(
             let windows: *mut AnyObject = msg_send![ns_app, windows];
             let count: usize = msg_send![windows, count];
 
-            // Find the overlay window by matching frame size (most reliable)
+            // Find the overlay window: it was just created with visible=false,
+            // so look for the most recently added hidden window
             let mut overlay_ns_window: *mut AnyObject = std::ptr::null_mut();
             for i in (0..count).rev() {
                 let w: *mut AnyObject = msg_send![windows, objectAtIndex: i];
                 if w.is_null() { continue; }
-
-                // Get the window's frame
-                // NSRect is { origin: { x, y }, size: { width, height } }
-                #[repr(C)]
-                #[derive(Debug)]
-                struct NSRect { x: f64, y: f64, w: f64, h: f64 }
-                let frame: NSRect = msg_send![w, frame];
-
-                // Match by size (the overlay window matches the screen dimensions)
-                if (frame.w - overlay_w).abs() < 2.0 && (frame.h - overlay_h).abs() < 2.0 {
+                let visible: Bool = msg_send![w, isVisible];
+                if !visible.as_bool() {
                     overlay_ns_window = w;
-                    eprintln!("[overlay] Found NSWindow by frame match: {}x{}", frame.w, frame.h);
+                    eprintln!("[overlay] Found hidden NSWindow at index {}", i);
                     break;
                 }
             }
 
-            if overlay_ns_window.is_null() {
-                // Fallback: use the last window (most recently created)
-                if count > 0 {
-                    overlay_ns_window = msg_send![windows, lastObject];
-                    eprintln!("[overlay] Fallback: using lastObject as overlay window");
-                }
+            if overlay_ns_window.is_null() && count > 0 {
+                // Fallback: use the last window
+                overlay_ns_window = msg_send![windows, lastObject];
+                eprintln!("[overlay] Fallback: using lastObject as overlay window");
             }
 
             if !overlay_ns_window.is_null() {
