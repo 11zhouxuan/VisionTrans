@@ -44,24 +44,24 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
 }
 
 fn encode_image_to_base64(image: &image::RgbaImage) -> Result<String, AppError> {
-    let mut buffer = Cursor::new(Vec::new());
+    // Convert RGBA to RGB for JPEG encoding (JPEG doesn't support alpha)
+    let rgb_image: image::RgbImage = image::DynamicImage::ImageRgba8(image.clone()).to_rgb8();
 
-    // Use fast PNG compression
-    let encoder = image::codecs::png::PngEncoder::new_with_quality(
-        &mut buffer,
-        image::codecs::png::CompressionType::Fast,
-        image::codecs::png::FilterType::Sub,
-    );
+    let mut buffer = Cursor::new(Vec::with_capacity(rgb_image.len() / 4));
+
+    // Use JPEG encoding - much faster than PNG for screenshots
+    // Quality 85 gives good visual quality with fast encoding
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, 85);
 
     encoder
         .write_image(
-            image.as_raw(),
-            image.width(),
-            image.height(),
-            image::ExtendedColorType::Rgba8,
+            rgb_image.as_raw(),
+            rgb_image.width(),
+            rgb_image.height(),
+            image::ExtendedColorType::Rgb8,
         )
         .map_err(|e| AppError::CaptureError(e.to_string()))?;
 
-    let png_bytes = buffer.into_inner();
-    Ok(base64::engine::general_purpose::STANDARD.encode(&png_bytes))
+    let jpeg_bytes = buffer.into_inner();
+    Ok(base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes))
 }

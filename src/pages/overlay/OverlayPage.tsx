@@ -271,7 +271,7 @@ export default function OverlayPage() {
 
     const img = new Image();
     img.onload = () => setBgImage(img);
-    img.src = `data:image/png;base64,${screenshotBase64}`;
+    img.src = `data:image/jpeg;base64,${screenshotBase64}`;
   }, [screenshotBase64]);
 
   // Render all annotations on the canvas (called after selection redraw)
