@@ -187,10 +187,22 @@ pub fn run() {
 
                 if let Ok(window) = overlay_window {
                     // Configure NSWindow properties at startup
-                    hotkey::configure_overlay_ns_window(&window);
-                    // Hide it immediately (it will be shown when user triggers capture)
-                    let _ = window.hide();
-                    eprintln!("[setup] Overlay window pre-created and configured");
+                    let addr = hotkey::configure_overlay_ns_window(&window);
+                    // Make invisible via alpha=0 (NOT hide, which removes from Spaces)
+                    // The window stays on all Spaces but is invisible
+                    if addr != 0 {
+                        use objc2::msg_send;
+                        use objc2::runtime::AnyObject;
+                        unsafe {
+                            let ns_window = addr as *mut AnyObject;
+                            let _: () = msg_send![ns_window, setAlphaValue: 0.0_f64];
+                            let _: () = msg_send![ns_window, setIgnoresMouseEvents: true];
+                            // Show the window (invisible) so it joins all Spaces
+                            let nil: *mut AnyObject = std::ptr::null_mut();
+                            let _: () = msg_send![ns_window, orderFront: nil];
+                        }
+                    }
+                    eprintln!("[setup] Overlay window pre-created, configured, and placed on all Spaces (alpha=0)");
                 } else {
                     eprintln!("[setup] Failed to pre-create overlay window (will create on demand)");
                 }

@@ -56,13 +56,25 @@ pub async fn close_overlay(
     // Clear screenshot data
     *state.last_screenshot.lock().unwrap() = None;
 
-    // On macOS, HIDE the overlay window (for reuse to avoid Space switching).
-    // On other platforms, close it normally.
+    // On macOS, make the overlay invisible (alpha=0) instead of hiding/closing.
+    // hide() calls orderOut: which removes the window from all Spaces.
+    // Using alpha=0 keeps the window on all Spaces (canJoinAllSpaces) so it
+    // can be shown on the fullscreen Space without switching.
     if let Some(window) = app.get_webview_window("overlay") {
         #[cfg(target_os = "macos")]
         {
-            let _ = window.hide();
-            eprintln!("[overlay] Hidden for reuse");
+            use objc2::msg_send;
+            use objc2::runtime::AnyObject;
+            if let Ok(ptr) = window.ns_window() {
+                unsafe {
+                    let ns_window = ptr as *mut AnyObject;
+                    // Make invisible but keep on all Spaces
+                    let _: () = msg_send![ns_window, setAlphaValue: 0.0_f64];
+                    // Move off-screen as extra measure
+                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: true];
+                    eprintln!("[overlay] Made invisible (alpha=0) for reuse on all Spaces");
+                }
+            }
         }
         #[cfg(not(target_os = "macos"))]
         {

@@ -222,10 +222,11 @@ fn show_overlay_window(
                             let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
                             let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                             let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                            // Show via makeKeyAndOrderFront (fixes transparency)
-                            let nil: *mut AnyObject = std::ptr::null_mut();
-                            let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-                            eprintln!("[overlay] Reused window shown via makeKeyAndOrderFront");
+                            // Restore alpha (was set to 0 when "hidden")
+                            let _: () = msg_send![ns_window, setAlphaValue: 1.0_f64];
+                            // Make key window for keyboard events
+                            let _: () = msg_send![ns_window, makeKeyWindow];
+                            eprintln!("[overlay] Reused window shown (alpha=1, makeKeyWindow)");
                         }
                     }
                 });
