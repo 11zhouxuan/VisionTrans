@@ -188,7 +188,7 @@ fn create_overlay_window(
     let app_handle = app.clone();
 
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
         // Step 1: Show the window
         let _ = win.show();
