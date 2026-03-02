@@ -88,7 +88,6 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
             *state.is_capturing.lock().unwrap() = false;
             eprintln!("[hotkey] Capture blocked: concurrency limit reached ({}/{})", active_count, max_concurrency);
 
-            // Try tauri-plugin-notification first
             let notif_result = app.notification()
                 .builder()
                 .title("VisionTrans")
@@ -101,7 +100,6 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
                 eprintln!("[hotkey] Notification plugin failed: {}", e);
             }
 
-            // Also use osascript as a reliable fallback on macOS
             #[cfg(target_os = "macos")]
             {
                 let msg = format!(
@@ -125,7 +123,6 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     {
         if !crate::services::permission::check_screen_recording_permission() {
             *state.is_capturing.lock().unwrap() = false;
-            // Request permission
             crate::services::permission::request_screen_recording_permission();
             return Err(AppError::ScreenRecordingPermissionDenied);
         }
@@ -143,39 +140,24 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     // Store screenshot data
     *state.last_screenshot.lock().unwrap() = Some(screenshot_data.clone());
 
-    // Create overlay window
-    create_overlay_window(app, &screenshot_data)?;
+    // Show overlay window
+    show_overlay_window(app, &screenshot_data)?;
 
     Ok(())
 }
 
 /// Configure NSWindow properties for fullscreen overlay on macOS.
-/// Returns the NSWindow address as usize for thread-safe passing.
+/// This is called both at app startup (pre-creation) and when showing the overlay.
+/// Public so it can be called from lib.rs setup.
 #[cfg(target_os = "macos")]
-fn configure_ns_window(window: &tauri::WebviewWindow) -> usize {
+pub fn configure_overlay_ns_window(window: &tauri::WebviewWindow) -> usize {
     use objc2::msg_send;
-    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::runtime::AnyObject;
 
     match window.ns_window() {
         Ok(ptr) => {
             let ns_window = ptr as *mut AnyObject;
             unsafe {
-                // Log the class of the object to verify it's actually an NSWindow
-                let cls: *mut AnyObject = msg_send![ns_window, class];
-                let cls_name: *mut AnyObject = msg_send![cls, description];
-                let cls_str: *const std::ffi::c_char = msg_send![cls_name, UTF8String];
-                let class_name = if !cls_str.is_null() {
-                    std::ffi::CStr::from_ptr(cls_str).to_string_lossy().to_string()
-                } else {
-                    "unknown".to_string()
-                };
-                eprintln!("[overlay] ns_window() returned object of class: {}", class_name);
-
-                // Read current values before setting
-                let current_level: i64 = msg_send![ns_window, level];
-                let current_behavior: usize = msg_send![ns_window, collectionBehavior];
-                eprintln!("[overlay] BEFORE: level={}, behavior={}", current_level, current_behavior);
-
                 // 1. Set window level to screenSaver (1000)
                 let _: () = msg_send![ns_window, setLevel: 1000_i64];
 
@@ -184,18 +166,12 @@ fn configure_ns_window(window: &tauri::WebviewWindow) -> usize {
                 let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
                 let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
 
-                // 3. Ensure window receives mouse events (not click-through)
+                // 3. Ensure window receives mouse events
                 let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
 
-                // Verify values were set
-                let new_level: i64 = msg_send![ns_window, level];
-                let new_behavior: usize = msg_send![ns_window, collectionBehavior];
-                eprintln!("[overlay] AFTER: level={}, behavior={}", new_level, new_behavior);
-
-                // Also check if window is on a specific space
-                let is_visible: bool = msg_send![ns_window, isVisible];
-                let is_key: bool = msg_send![ns_window, isKeyWindow];
-                eprintln!("[overlay] isVisible={}, isKeyWindow={}", is_visible, is_key);
+                let actual_level: i64 = msg_send![ns_window, level];
+                let actual_behavior: usize = msg_send![ns_window, collectionBehavior];
+                eprintln!("[overlay] NSWindow configured: level={}, behavior={}", actual_level, actual_behavior);
             }
             ptr as usize
         }
@@ -206,20 +182,67 @@ fn configure_ns_window(window: &tauri::WebviewWindow) -> usize {
     }
 }
 
-fn create_overlay_window(
+/// Show the overlay window. Reuses the pre-created window on macOS,
+/// or creates a new one on other platforms.
+fn show_overlay_window(
     app: &AppHandle,
     screenshot: &crate::state::ScreenshotData,
 ) -> Result<(), AppError> {
     let overlay_w = screenshot.logical_width as f64;
     let overlay_h = screenshot.logical_height as f64;
 
-    // Close existing overlay if any (always create fresh for correct screenshot)
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.close();
+    // Try to reuse existing overlay window (pre-created at startup on macOS)
+    if let Some(existing) = app.get_webview_window("overlay") {
+        eprintln!("[overlay] Reusing pre-created overlay window");
+
+        // Resize to match current screen
+        let _ = existing.set_size(tauri::LogicalSize::new(overlay_w, overlay_h));
+        let _ = existing.set_position(tauri::LogicalPosition::new(0.0, 0.0));
+
+        // Reload the page to pick up new screenshot data
+        let _ = existing.eval("window.location.reload()");
+
+        // Re-configure and show
+        #[cfg(target_os = "macos")]
+        {
+            let ns_window_addr = configure_overlay_ns_window(&existing);
+            let app_handle = app.clone();
+            std::thread::spawn(move || {
+                // Brief delay for page reload
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                let addr = ns_window_addr;
+                let _ = app_handle.run_on_main_thread(move || {
+                    if addr != 0 {
+                        use objc2::msg_send;
+                        use objc2::runtime::AnyObject;
+                        unsafe {
+                            let ns_window = addr as *mut AnyObject;
+                            // Re-apply properties
+                            let _: () = msg_send![ns_window, setLevel: 1000_i64];
+                            let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+                            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                            let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                            // Show via makeKeyAndOrderFront (fixes transparency)
+                            let nil: *mut AnyObject = std::ptr::null_mut();
+                            let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+                            eprintln!("[overlay] Reused window shown via makeKeyAndOrderFront");
+                        }
+                    }
+                });
+            });
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = existing.show();
+            let _ = existing.set_focus();
+        }
+
+        return Ok(());
     }
 
-    // First time: create the overlay window
-    eprintln!("[overlay] Creating new overlay window");
+    // Fallback: create new overlay window (non-macOS or if pre-creation failed)
+    eprintln!("[overlay] Creating new overlay window (fallback)");
     use tauri::WebviewWindowBuilder;
 
     let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
@@ -234,15 +257,12 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // Configure NSWindow properties immediately after creation
     #[cfg(target_os = "macos")]
-    let ns_window_addr = configure_ns_window(&window);
+    let ns_window_addr = configure_overlay_ns_window(&window);
 
-    // Show window after a brief delay to let WebView initialize
+    // Show after WebView initializes
     #[cfg(target_os = "macos")]
     {
-        // On macOS, use native makeKeyAndOrderFront: via run_on_main_thread.
-        // Do NOT use Tauri's show()/set_focus() - they cause click-through issues.
         let app_handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(500));
@@ -250,20 +270,16 @@ fn create_overlay_window(
             let _ = app_handle.run_on_main_thread(move || {
                 if addr != 0 {
                     use objc2::msg_send;
-                    use objc2::runtime::{AnyObject, Bool};
+                    use objc2::runtime::AnyObject;
                     unsafe {
                         let ns_window = addr as *mut AnyObject;
-                        // Re-apply all properties
                         let _: () = msg_send![ns_window, setLevel: 1000_i64];
                         let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
                         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                         let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-
-                        // Show window via makeKeyAndOrderFront (confirmed to fix transparency)
                         let nil: *mut AnyObject = std::ptr::null_mut();
                         let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-
-                        eprintln!("[overlay] Shown via makeKeyAndOrderFront on main thread");
+                        eprintln!("[overlay] New window shown via makeKeyAndOrderFront");
                     }
                 }
             });
