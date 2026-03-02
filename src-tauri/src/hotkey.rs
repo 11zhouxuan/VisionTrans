@@ -179,9 +179,11 @@ fn create_overlay_window(
 
     // On macOS, set the overlay window to appear above fullscreen apps
     // We need:
-    //   1. High window level (NSScreenSaverWindowLevel = 1000) to appear above fullscreen apps
+    //   1. High window level to appear above fullscreen apps
     //   2. NSWindowCollectionBehaviorCanJoinAllSpaces so it shows on all Spaces
     //   3. NSWindowCollectionBehaviorFullScreenAuxiliary so it can coexist with fullscreen windows
+    //   4. Show via orderFrontRegardless (not show/set_focus) to avoid activating the app
+    //      which would cause macOS to switch away from the fullscreen Space
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
@@ -194,37 +196,66 @@ fn create_overlay_window(
             let count: usize = msg_send![windows, count];
 
             if count > 0 {
-                // The overlay window is the most recently created window (last in array)
                 let overlay_ns_window: *mut AnyObject = msg_send![windows, lastObject];
 
                 if !overlay_ns_window.is_null() {
-                    // Set window level high enough to appear above fullscreen apps.
-                    // NSFloatingWindowLevel = 3 (default for always_on_top, NOT enough for fullscreen)
-                    // NSStatusWindowLevel = 25
-                    // NSPopUpMenuWindowLevel = 101
+                    // NSPopUpMenuWindowLevel = 101 (above fullscreen apps)
                     let _: () = msg_send![overlay_ns_window, setLevel: 101_i64];
 
-                    // Use MoveToActiveSpace (NOT CanJoinAllSpaces) to move the window
-                    // to the currently active Space (including fullscreen Spaces)
-                    // without causing a Space switch when the window is shown.
-                    // NSWindowCollectionBehaviorMoveToActiveSpace (1 << 1) = 2
+                    // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
                     // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
-                    let behavior: usize = (1 << 1) | (1 << 8);
+                    let behavior: usize = (1 << 0) | (1 << 8);
                     let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
 
-                    eprintln!("[overlay] Set window level=101, behavior=moveToActiveSpace|fullScreenAuxiliary");
+                    eprintln!("[overlay] Set window level=101, behavior=canJoinAllSpaces|fullScreenAuxiliary");
                 }
             }
         }
     }
 
     // Show window after a brief delay to let WebView initialize
-    let win = window.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = win.show();
-        let _ = win.set_focus();
-    });
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, use run_on_main_thread + orderFrontRegardless to show the window
+        // WITHOUT activating the app. This prevents macOS from switching away from
+        // the current fullscreen Space.
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = app_handle.run_on_main_thread(move || {
+                use objc2::msg_send;
+                use objc2::runtime::{AnyClass, AnyObject};
+
+                unsafe {
+                    let cls = AnyClass::get(c"NSApplication").unwrap();
+                    let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
+                    let windows: *mut AnyObject = msg_send![ns_app, windows];
+                    let count: usize = msg_send![windows, count];
+
+                    if count > 0 {
+                        let ns_window: *mut AnyObject = msg_send![windows, lastObject];
+                        if !ns_window.is_null() {
+                            // orderFrontRegardless shows the window without activating the app
+                            let _: () = msg_send![ns_window, orderFrontRegardless];
+                            // makeKeyWindow lets it receive keyboard events (Escape, etc.)
+                            let _: () = msg_send![ns_window, makeKeyWindow];
+                            eprintln!("[overlay] Shown via orderFrontRegardless (no app activation)");
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let win = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = win.show();
+            let _ = win.set_focus();
+        });
+    }
 
     Ok(())
 }
