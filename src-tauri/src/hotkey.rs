@@ -172,12 +172,21 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
+    // Get NSWindow pointer on current thread (before spawning background thread)
+    #[cfg(target_os = "macos")]
+    let ns_window_addr: usize = window.ns_window()
+        .map(|ptr| ptr as usize)
+        .unwrap_or(0);
+
     // Show window after WebView initializes, following expert's recommended order:
     // 1. window.show()
     // 2. window.set_always_on_top(true)
     // 3. Native API: set level + collectionBehavior (overrides Tauri's defaults)
     // 4. window.set_focus()
     let win = window.clone();
+    #[cfg(target_os = "macos")]
+    let app_handle = app.clone();
+
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -189,12 +198,25 @@ fn create_overlay_window(
         let _ = win.set_always_on_top(true);
         eprintln!("[overlay] Step 2: set_always_on_top(true)");
 
-        // Step 3: Override with native NSWindow properties
+        // Step 3: Override with native NSWindow properties on main thread
         // This MUST be after show() because Tauri resets properties during show
         #[cfg(target_os = "macos")]
         {
-            set_overlay_ns_window_props(&win);
-            eprintln!("[overlay] Step 3: native props applied");
+            let addr = ns_window_addr;
+            let _ = app_handle.run_on_main_thread(move || {
+                if addr != 0 {
+                    use objc2::msg_send;
+                    use objc2::runtime::AnyObject;
+                    unsafe {
+                        let ns_window = addr as *mut AnyObject;
+                        let _: () = msg_send![ns_window, setLevel: 2000_i64];
+                        let behavior: usize = 1 | 16 | 64 | 256;
+                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                        let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                        eprintln!("[overlay] Step 3: native props set (level=2000, behavior={})", behavior);
+                    }
+                }
+            });
         }
 
         // Step 4: Get focus (keyboard events like Escape)
