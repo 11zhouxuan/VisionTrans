@@ -176,69 +176,68 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // Show window after a brief delay to let WebView initialize.
-    // On macOS, we show first via Tauri, then IMMEDIATELY set the NSWindow
-    // properties on the main thread. This ensures we're modifying the
-    // correct window AFTER Tauri has fully initialized it.
-    let win = window.clone();
+    // On macOS, configure the NSWindow BEFORE showing it.
+    // We get the NSWindow pointer directly from the Tauri window (not searching
+    // through NSApplication.windows which is unreliable).
+    // Store as usize so it can be sent across threads.
     #[cfg(target_os = "macos")]
-    let app_handle = app.clone();
+    let ns_window_addr: usize = {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
 
+        // Use Tauri's ns_window() to get the correct NSWindow pointer
+        match window.ns_window() {
+            Ok(ptr) => {
+                let ns_window = ptr as *mut AnyObject;
+                unsafe {
+                    // 1. Set window level to screenSaver (1000)
+                    let _: () = msg_send![ns_window, setLevel: 1000_i64];
+
+                    // 2. Set collection behavior:
+                    //    canJoinAllSpaces (1) | stationary (16) | ignoresCycle (64) | fullScreenAuxiliary (256)
+                    let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+
+                    // 3. Ensure window receives mouse events (not click-through)
+                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+
+                    eprintln!("[overlay] NSWindow configured: level=1000, behavior={}, ignoresMouseEvents=false", behavior);
+                }
+                ptr as usize
+            }
+            Err(e) => {
+                eprintln!("[overlay] Failed to get ns_window: {}, falling back", e);
+                0
+            }
+        }
+    };
+
+    // Show window after a brief delay to let WebView initialize
+    let win = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(500));
-
-        // Show the window first (Tauri handles main thread dispatch internally)
         let _ = win.show();
+        let _ = win.set_focus();
 
+        // On macOS, re-apply properties after show() in case Tauri overrides them
         #[cfg(target_os = "macos")]
         {
-            // Now set the NSWindow properties on the main thread AFTER show().
-            // This ensures: 1) we modify the correct window, 2) properties
-            // aren't overridden by Tauri's show() internals.
-            let _ = app_handle.run_on_main_thread(move || {
+            if ns_window_addr != 0 {
                 use objc2::msg_send;
-                use objc2::runtime::{AnyClass, AnyObject};
+                use objc2::runtime::AnyObject;
 
+                // Note: This runs on a background thread, but setLevel/setCollectionBehavior
+                // are generally safe to call from any thread on modern macOS.
+                // If this causes issues, we can use run_on_main_thread.
                 unsafe {
-                    let cls = AnyClass::get(c"NSApplication").unwrap();
-                    let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
-                    let windows: *mut AnyObject = msg_send![ns_app, windows];
-                    let count: usize = msg_send![windows, count];
-
-                    // Find the overlay window - it should be the key window now
-                    let ns_window: *mut AnyObject = msg_send![ns_app, keyWindow];
-                    if !ns_window.is_null() {
-                        // NSWindow.Level.screenSaver = 1000
-                        let _: () = msg_send![ns_window, setLevel: 1000_i64];
-
-                        // Collection behavior:
-                        // canJoinAllSpaces    (1 << 0) = 1
-                        // fullScreenAuxiliary (1 << 8) = 256
-                        // stationary          (1 << 4) = 16
-                        // ignoresCycle        (1 << 6) = 64
-                        let behavior: usize = (1 << 0) | (1 << 8) | (1 << 4) | (1 << 6);
-                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-
-                        eprintln!("[overlay] Post-show: set level=1000, behavior={} on keyWindow", behavior);
-                    } else {
-                        eprintln!("[overlay] Warning: no keyWindow found, using lastObject");
-                        if count > 0 {
-                            let ns_window: *mut AnyObject = msg_send![windows, lastObject];
-                            if !ns_window.is_null() {
-                                let _: () = msg_send![ns_window, setLevel: 1000_i64];
-                                let behavior: usize = (1 << 0) | (1 << 8) | (1 << 4) | (1 << 6);
-                                let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                                eprintln!("[overlay] Post-show: set level=1000, behavior={} on lastObject", behavior);
-                            }
-                        }
-                    }
+                    let ns_window = ns_window_addr as *mut AnyObject;
+                    let _: () = msg_send![ns_window, setLevel: 1000_i64];
+                    let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                    eprintln!("[overlay] Post-show: re-applied NSWindow properties");
                 }
-            });
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = win.set_focus();
+            }
         }
     });
 
