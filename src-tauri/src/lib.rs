@@ -164,50 +164,6 @@ pub fn run() {
                 eprintln!("Failed to setup hotkey: {}", e);
             }
 
-            // Pre-create the overlay window (hidden) so it exists on all Spaces
-            // from the start. This prevents Space switching when showing it later
-            // over fullscreen apps.
-            #[cfg(target_os = "macos")]
-            {
-                eprintln!("[setup] Pre-creating overlay window for fullscreen support");
-                let overlay_window = tauri::WebviewWindowBuilder::new(
-                    &app_handle,
-                    "overlay",
-                    tauri::WebviewUrl::App("/".into()),
-                )
-                .title("")
-                .inner_size(800.0, 600.0) // Will be resized when actually used
-                .position(0.0, 0.0)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .visible(false)
-                .build();
-
-                if let Ok(window) = overlay_window {
-                    // Configure NSWindow properties at startup
-                    let addr = hotkey::configure_overlay_ns_window(&window);
-                    // Make invisible via alpha=0 (NOT hide, which removes from Spaces)
-                    // The window stays on all Spaces but is invisible
-                    if addr != 0 {
-                        use objc2::msg_send;
-                        use objc2::runtime::AnyObject;
-                        unsafe {
-                            let ns_window = addr as *mut AnyObject;
-                            let _: () = msg_send![ns_window, setAlphaValue: 0.0_f64];
-                            let _: () = msg_send![ns_window, setIgnoresMouseEvents: true];
-                            // Show the window (invisible) so it joins all Spaces
-                            let nil: *mut AnyObject = std::ptr::null_mut();
-                            let _: () = msg_send![ns_window, orderFront: nil];
-                        }
-                    }
-                    eprintln!("[setup] Overlay window pre-created, configured, and placed on all Spaces (alpha=0)");
-                } else {
-                    eprintln!("[setup] Failed to pre-create overlay window (will create on demand)");
-                }
-            }
-
             // Check if onboarding is needed
             let onboarding_completed = store
                 .get("onboardingCompleted")
