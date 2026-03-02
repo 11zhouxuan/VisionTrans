@@ -185,7 +185,7 @@ fn create_overlay_window(
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
-        use objc2::runtime::{AnyClass, AnyObject, Bool};
+        use objc2::runtime::{AnyClass, AnyObject};
 
         unsafe {
             let cls = AnyClass::get(c"NSApplication").unwrap();
@@ -193,38 +193,26 @@ fn create_overlay_window(
             let windows: *mut AnyObject = msg_send![ns_app, windows];
             let count: usize = msg_send![windows, count];
 
-            // Find the overlay window: it was just created with visible=false,
-            // so look for the most recently added hidden window
-            let mut overlay_ns_window: *mut AnyObject = std::ptr::null_mut();
-            for i in (0..count).rev() {
-                let w: *mut AnyObject = msg_send![windows, objectAtIndex: i];
-                if w.is_null() { continue; }
-                let visible: Bool = msg_send![w, isVisible];
-                if !visible.as_bool() {
-                    overlay_ns_window = w;
-                    eprintln!("[overlay] Found hidden NSWindow at index {}", i);
-                    break;
+            if count > 0 {
+                // The overlay window is the most recently created window (last in array)
+                let overlay_ns_window: *mut AnyObject = msg_send![windows, lastObject];
+
+                if !overlay_ns_window.is_null() {
+                    // Set window level high enough to appear above fullscreen apps.
+                    // NSFloatingWindowLevel = 3 (default for always_on_top, NOT enough for fullscreen)
+                    // NSStatusWindowLevel = 25
+                    // NSPopUpMenuWindowLevel = 101
+                    // We use kCGMaximumWindowLevelKey area (high but not extreme)
+                    let _: () = msg_send![overlay_ns_window, setLevel: 101_i64];
+
+                    // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
+                    // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
+                    // Note: do NOT combine CanJoinAllSpaces with MoveToActiveSpace (they conflict)
+                    let behavior: usize = (1 << 0) | (1 << 8);
+                    let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
+
+                    eprintln!("[overlay] Set window level=101 (popUpMenu), behavior=canJoinAllSpaces|fullScreenAuxiliary");
                 }
-            }
-
-            if overlay_ns_window.is_null() && count > 0 {
-                // Fallback: use the last window
-                overlay_ns_window = msg_send![windows, lastObject];
-                eprintln!("[overlay] Fallback: using lastObject as overlay window");
-            }
-
-            if !overlay_ns_window.is_null() {
-                // Set window level to NSScreenSaverWindowLevel (1000)
-                // This is high enough to appear above fullscreen apps
-                let _: () = msg_send![overlay_ns_window, setLevel: 1000_i64];
-
-                // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
-                // NSWindowCollectionBehaviorMoveToActiveSpace (1 << 1) = 2
-                // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
-                let behavior: usize = (1 << 0) | (1 << 1) | (1 << 8);
-                let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
-
-                eprintln!("[overlay] Set window level=1000, behavior=canJoinAllSpaces|moveToActiveSpace|fullScreenAuxiliary");
             }
         }
     }
