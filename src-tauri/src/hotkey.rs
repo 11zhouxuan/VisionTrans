@@ -221,8 +221,38 @@ fn create_overlay_window(
     let win = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = win.show();
-        let _ = win.set_focus();
+
+        #[cfg(target_os = "macos")]
+        {
+            // On macOS, use orderFrontRegardless instead of show()+set_focus()
+            // to avoid activating the app and switching away from fullscreen Spaces.
+            use objc2::msg_send;
+            use objc2::runtime::{AnyClass, AnyObject};
+
+            unsafe {
+                let cls = AnyClass::get(c"NSApplication").unwrap();
+                let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
+                let windows: *mut AnyObject = msg_send![ns_app, windows];
+                let count: usize = msg_send![windows, count];
+
+                if count > 0 {
+                    let ns_window: *mut AnyObject = msg_send![windows, lastObject];
+                    if !ns_window.is_null() {
+                        // Make visible without activating the app
+                        let _: () = msg_send![ns_window, orderFrontRegardless];
+                        // Make it the key window so it receives keyboard events (Escape, etc.)
+                        let _: () = msg_send![ns_window, makeKeyWindow];
+                        eprintln!("[overlay] Shown via orderFrontRegardless + makeKeyWindow");
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
     });
 
     Ok(())
