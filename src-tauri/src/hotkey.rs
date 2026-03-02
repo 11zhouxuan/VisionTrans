@@ -219,43 +219,37 @@ fn create_overlay_window(
     if let Some(existing) = app.get_webview_window("overlay") {
         eprintln!("[overlay] Reusing existing overlay window");
 
-        // Reconfigure NSWindow properties (in case they were reset)
+        // Reconfigure NSWindow properties BEFORE showing
         #[cfg(target_os = "macos")]
         let ns_window_addr = configure_ns_window(&existing);
 
         // Reload the page to pick up new screenshot data
         let _ = existing.eval("window.location.reload()");
 
-        // Show the existing window
+        // Show the existing window using Tauri's show() for proper WebView init
+        // Do NOT call set_focus() - it triggers NSApp.activate() and Space switch
+        let _ = existing.show();
+        eprintln!("[overlay] Reused window shown via Tauri show()");
+
+        // Re-apply NSWindow properties after show() (Tauri may override them)
         #[cfg(target_os = "macos")]
         {
             let app_handle = app.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                let addr = ns_window_addr;
-                let _ = app_handle.run_on_main_thread(move || {
-                    if addr != 0 {
-                        use objc2::msg_send;
-                        use objc2::runtime::AnyObject;
-                        unsafe {
-                            let ns_window = addr as *mut AnyObject;
-                            let _: () = msg_send![ns_window, setLevel: 1000_i64];
-                            let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
-                            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                            let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                            let nil: *mut AnyObject = std::ptr::null_mut();
-                            let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-                            eprintln!("[overlay] Reused window shown via makeKeyAndOrderFront");
-                        }
+            let addr = ns_window_addr;
+            let _ = app_handle.run_on_main_thread(move || {
+                if addr != 0 {
+                    use objc2::msg_send;
+                    use objc2::runtime::AnyObject;
+                    unsafe {
+                        let ns_window = addr as *mut AnyObject;
+                        let _: () = msg_send![ns_window, setLevel: 1000_i64];
+                        let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                        let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                        eprintln!("[overlay] Post-show: re-applied properties on reused window");
                     }
-                });
+                }
             });
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = existing.show();
-            let _ = existing.set_focus();
         }
 
         return Ok(());
@@ -282,11 +276,21 @@ fn create_overlay_window(
     let ns_window_addr = configure_ns_window(&window);
 
     // Show window after a brief delay to let WebView initialize
+    // Use Tauri's show() for proper WebView event handling (fixes click-through)
+    // Do NOT call set_focus() on macOS (it triggers NSApp.activate and Space switch)
+    let win = window.clone();
     #[cfg(target_os = "macos")]
-    {
-        let app_handle = app.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
+    let app_handle = app.clone();
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let _ = win.show();
+        eprintln!("[overlay] New window shown via Tauri show()");
+
+        // On macOS, re-apply NSWindow properties after show()
+        // Tauri's show() may reset level/behavior
+        #[cfg(target_os = "macos")]
+        {
             let addr = ns_window_addr;
             let _ = app_handle.run_on_main_thread(move || {
                 if addr != 0 {
@@ -298,24 +302,21 @@ fn create_overlay_window(
                         let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
                         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                         let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                        let nil: *mut AnyObject = std::ptr::null_mut();
-                        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-                        eprintln!("[overlay] New window shown via makeKeyAndOrderFront");
+
+                        // Read back to verify
+                        let actual_level: i64 = msg_send![ns_window, level];
+                        let actual_behavior: usize = msg_send![ns_window, collectionBehavior];
+                        eprintln!("[overlay] Post-show verify: level={}, behavior={}", actual_level, actual_behavior);
                     }
                 }
             });
-        });
-    }
+        }
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        let win = window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = win.show();
+        #[cfg(not(target_os = "macos"))]
+        {
             let _ = win.set_focus();
-        });
-    }
+        }
+    });
 
     Ok(())
 }
