@@ -250,7 +250,7 @@ fn create_overlay_window(
             let _ = app_handle.run_on_main_thread(move || {
                 if addr != 0 {
                     use objc2::msg_send;
-                    use objc2::runtime::AnyObject;
+                    use objc2::runtime::{AnyObject, Bool};
                     unsafe {
                         let ns_window = addr as *mut AnyObject;
                         // Re-apply all properties
@@ -258,10 +258,19 @@ fn create_overlay_window(
                         let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
                         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                         let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                        // Show window natively
-                        let nil: *mut AnyObject = std::ptr::null_mut();
-                        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
-                        eprintln!("[overlay] Shown via native makeKeyAndOrderFront on main thread");
+
+                        // Show window WITHOUT activating the app:
+                        // 1. setIsVisible:YES makes the window visible without ordering/activating
+                        // 2. orderWindow:relativeTo: orders it without activating
+                        // 3. makeKeyWindow makes it receive keyboard events
+                        // This avoids makeKeyAndOrderFront: which activates the app
+                        let yes = Bool::YES;
+                        let _: () = msg_send![ns_window, setIsVisible: yes];
+                        // NSWindowAbove = 1, relativeTo: 0 means above all
+                        let _: () = msg_send![ns_window, orderWindow: 1_i64 relativeTo: 0_i64];
+                        let _: () = msg_send![ns_window, makeKeyWindow];
+
+                        eprintln!("[overlay] Shown via setIsVisible+orderWindow+makeKeyWindow (no activate)");
                     }
                 }
             });
