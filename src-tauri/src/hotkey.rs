@@ -154,12 +154,28 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
 #[cfg(target_os = "macos")]
 fn configure_ns_window(window: &tauri::WebviewWindow) -> usize {
     use objc2::msg_send;
-    use objc2::runtime::AnyObject;
+    use objc2::runtime::{AnyClass, AnyObject};
 
     match window.ns_window() {
         Ok(ptr) => {
             let ns_window = ptr as *mut AnyObject;
             unsafe {
+                // Log the class of the object to verify it's actually an NSWindow
+                let cls: *mut AnyObject = msg_send![ns_window, class];
+                let cls_name: *mut AnyObject = msg_send![cls, description];
+                let cls_str: *const std::ffi::c_char = msg_send![cls_name, UTF8String];
+                let class_name = if !cls_str.is_null() {
+                    std::ffi::CStr::from_ptr(cls_str).to_string_lossy().to_string()
+                } else {
+                    "unknown".to_string()
+                };
+                eprintln!("[overlay] ns_window() returned object of class: {}", class_name);
+
+                // Read current values before setting
+                let current_level: i64 = msg_send![ns_window, level];
+                let current_behavior: usize = msg_send![ns_window, collectionBehavior];
+                eprintln!("[overlay] BEFORE: level={}, behavior={}", current_level, current_behavior);
+
                 // 1. Set window level to screenSaver (1000)
                 let _: () = msg_send![ns_window, setLevel: 1000_i64];
 
@@ -171,7 +187,15 @@ fn configure_ns_window(window: &tauri::WebviewWindow) -> usize {
                 // 3. Ensure window receives mouse events (not click-through)
                 let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
 
-                eprintln!("[overlay] NSWindow configured: level=1000, behavior={}, ignoresMouseEvents=false", behavior);
+                // Verify values were set
+                let new_level: i64 = msg_send![ns_window, level];
+                let new_behavior: usize = msg_send![ns_window, collectionBehavior];
+                eprintln!("[overlay] AFTER: level={}, behavior={}", new_level, new_behavior);
+
+                // Also check if window is on a specific space
+                let is_visible: bool = msg_send![ns_window, isVisible];
+                let is_key: bool = msg_send![ns_window, isKeyWindow];
+                eprintln!("[overlay] isVisible={}, isKeyWindow={}", is_visible, is_key);
             }
             ptr as usize
         }
