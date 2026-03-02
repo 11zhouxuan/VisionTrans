@@ -231,6 +231,7 @@ fn create_overlay_window(
         .skip_taskbar(true)
         .resizable(false)
         .visible(false)
+        .visible_on_all_workspaces(true)
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
