@@ -202,16 +202,17 @@ fn create_overlay_window(
                     // NSFloatingWindowLevel = 3 (default for always_on_top, NOT enough for fullscreen)
                     // NSStatusWindowLevel = 25
                     // NSPopUpMenuWindowLevel = 101
-                    // We use kCGMaximumWindowLevelKey area (high but not extreme)
                     let _: () = msg_send![overlay_ns_window, setLevel: 101_i64];
 
-                    // NSWindowCollectionBehaviorCanJoinAllSpaces (1 << 0) = 1
+                    // Use MoveToActiveSpace (NOT CanJoinAllSpaces) to move the window
+                    // to the currently active Space (including fullscreen Spaces)
+                    // without causing a Space switch when the window is shown.
+                    // NSWindowCollectionBehaviorMoveToActiveSpace (1 << 1) = 2
                     // NSWindowCollectionBehaviorFullScreenAuxiliary (1 << 8) = 256
-                    // Note: do NOT combine CanJoinAllSpaces with MoveToActiveSpace (they conflict)
-                    let behavior: usize = (1 << 0) | (1 << 8);
+                    let behavior: usize = (1 << 1) | (1 << 8);
                     let _: () = msg_send![overlay_ns_window, setCollectionBehavior: behavior];
 
-                    eprintln!("[overlay] Set window level=101 (popUpMenu), behavior=canJoinAllSpaces|fullScreenAuxiliary");
+                    eprintln!("[overlay] Set window level=101, behavior=moveToActiveSpace|fullScreenAuxiliary");
                 }
             }
         }
@@ -221,38 +222,8 @@ fn create_overlay_window(
     let win = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(500));
-
-        #[cfg(target_os = "macos")]
-        {
-            // On macOS, use orderFrontRegardless instead of show()+set_focus()
-            // to avoid activating the app and switching away from fullscreen Spaces.
-            use objc2::msg_send;
-            use objc2::runtime::{AnyClass, AnyObject};
-
-            unsafe {
-                let cls = AnyClass::get(c"NSApplication").unwrap();
-                let ns_app: *mut AnyObject = msg_send![cls, sharedApplication];
-                let windows: *mut AnyObject = msg_send![ns_app, windows];
-                let count: usize = msg_send![windows, count];
-
-                if count > 0 {
-                    let ns_window: *mut AnyObject = msg_send![windows, lastObject];
-                    if !ns_window.is_null() {
-                        // Make visible without activating the app
-                        let _: () = msg_send![ns_window, orderFrontRegardless];
-                        // Make it the key window so it receives keyboard events (Escape, etc.)
-                        let _: () = msg_send![ns_window, makeKeyWindow];
-                        eprintln!("[overlay] Shown via orderFrontRegardless + makeKeyWindow");
-                    }
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = win.show();
-            let _ = win.set_focus();
-        }
+        let _ = win.show();
+        let _ = win.set_focus();
     });
 
     Ok(())
