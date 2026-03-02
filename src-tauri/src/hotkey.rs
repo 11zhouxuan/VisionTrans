@@ -219,6 +219,10 @@ fn create_overlay_window(
         // On macOS, use run_on_main_thread + orderFrontRegardless to show the window
         // WITHOUT activating the app. This prevents macOS from switching away from
         // the current fullscreen Space.
+        // NOTE: We intentionally do NOT call makeKeyWindow here because that would
+        // implicitly activate the app and cause a Space switch. The window will still
+        // receive mouse events. Keyboard events (Escape) won't work directly, but
+        // the overlay has close buttons and the global hotkey still works.
         let app_handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(500));
@@ -237,9 +241,9 @@ fn create_overlay_window(
                         if !ns_window.is_null() {
                             // orderFrontRegardless shows the window without activating the app
                             let _: () = msg_send![ns_window, orderFrontRegardless];
-                            // makeKeyWindow lets it receive keyboard events (Escape, etc.)
-                            let _: () = msg_send![ns_window, makeKeyWindow];
-                            eprintln!("[overlay] Shown via orderFrontRegardless (no app activation)");
+                            // Do NOT call makeKeyWindow - it implicitly activates the app
+                            // and causes macOS to switch away from fullscreen Spaces
+                            eprintln!("[overlay] Shown via orderFrontRegardless only (no activation)");
                         }
                     }
                 }
