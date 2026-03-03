@@ -214,7 +214,8 @@ function getCursorForHandle(handle: AnnotationHandle | null): string | null {
 export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
-  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
   const [markTool, setMarkTool] = useState<MarkTool>('rect');
   const [brushSize, setBrushSize] = useState(4);
   const [brushColor, setBrushColor] = useState('rgba(255, 50, 50, 0.8)');
