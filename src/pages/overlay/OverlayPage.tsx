@@ -1,6 +1,8 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useSelection } from './hooks/useSelection';
 import SelectionToolbar from './components/SelectionToolbar';
 import type { ScreenshotData } from '../../types/translate';
@@ -213,7 +215,7 @@ function getCursorForHandle(handle: AnnotationHandle | null): string | null {
 export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
-  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
   const [markTool, setMarkTool] = useState<MarkTool>('rect');
   const [brushSize, setBrushSize] = useState(4);
   const [brushColor, setBrushColor] = useState('rgba(255, 50, 50, 0.8)');
@@ -244,22 +246,32 @@ export default function OverlayPage() {
     setRedoCount(0);
   }, []);
 
-  // Fetch screenshot data
+  // Fetch screenshot data - use file path + convertFileSrc for fast loading
   useEffect(() => {
     const fetchScreenshot = async () => {
       try {
         const data = await invoke<ScreenshotData>('get_screenshot');
-        setScreenshotBase64(data.base64);
+        // Convert local file path to asset:// URL that WebView can load directly
+        const url = convertFileSrc(data.filePath);
+        setScreenshotUrl(url + '?t=' + Date.now()); // cache bust
       } catch (err) {
         console.error('Failed to get screenshot:', err);
       }
     };
     fetchScreenshot();
+
+    // Also listen for screenshot-ready event (for pre-created window reuse)
+    const unlisten = listen<{ filePath: string }>('screenshot-ready', (event) => {
+      const url = convertFileSrc(event.payload.filePath);
+      setScreenshotUrl(url + '?t=' + Date.now());
+    });
+
+    return () => { unlisten.then(fn => fn()); };
   }, []);
 
   // Load background image and initialize canvases
   useEffect(() => {
-    if (!canvasRef.current || !screenshotBase64) return;
+    if (!canvasRef.current || !screenshotUrl) return;
     const canvas = canvasRef.current;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = window.innerWidth * dpr;
@@ -271,8 +283,8 @@ export default function OverlayPage() {
 
     const img = new Image();
     img.onload = () => setBgImage(img);
-    img.src = `data:image/jpeg;base64,${screenshotBase64}`;
-  }, [screenshotBase64]);
+    img.src = screenshotUrl;
+  }, [screenshotUrl]);
 
   // Render all annotations on the canvas (called after selection redraw)
   // NOTE: This callback must have stable identity to prevent the useEffect

@@ -12,7 +12,7 @@ export interface TranslateError {
 }
 
 export interface ScreenshotData {
-  base64: string;
+  filePath: string;
   logicalWidth: number;
   logicalHeight: number;
   scaleFactor: number;

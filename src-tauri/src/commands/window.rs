@@ -48,9 +48,17 @@ pub async fn close_overlay(
     // Clear screenshot data
     *state.last_screenshot.lock().unwrap() = None;
 
-    // Close overlay window
+    // On macOS, hide the overlay (for fast reuse on next capture).
+    // On other platforms, close it.
     if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.close();
+        #[cfg(target_os = "macos")]
+        {
+            let _ = window.hide();
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = window.close();
+        }
     }
 
     Ok(())

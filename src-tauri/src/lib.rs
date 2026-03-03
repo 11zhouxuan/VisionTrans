@@ -173,6 +173,35 @@ pub fn run() {
                 eprintln!("Failed to setup hotkey: {}", e);
             }
 
+            // Pre-create the overlay window (hidden) so subsequent captures are instant.
+            // The first show() will be fast since WebView is already initialized.
+            #[cfg(target_os = "macos")]
+            {
+                eprintln!("[setup] Pre-creating overlay window...");
+                match tauri::WebviewWindowBuilder::new(
+                    &app_handle,
+                    "overlay",
+                    tauri::WebviewUrl::App("/".into()),
+                )
+                .title("")
+                .inner_size(800.0, 600.0)
+                .position(0.0, 0.0)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .visible(false)
+                .build()
+                {
+                    Ok(_window) => {
+                        eprintln!("[setup] Overlay window pre-created (hidden, WebView warming up)");
+                    }
+                    Err(e) => {
+                        eprintln!("[setup] Failed to pre-create overlay: {} (will create on demand)", e);
+                    }
+                }
+            }
+
             // Check if onboarding is needed
             let onboarding_completed = store
                 .get("onboardingCompleted")

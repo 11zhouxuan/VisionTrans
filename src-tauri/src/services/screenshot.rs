@@ -1,6 +1,4 @@
-use base64::Engine;
 use image::ImageEncoder;
-use std::io::Cursor;
 use xcap::Monitor;
 
 use crate::errors::AppError;
@@ -8,6 +6,8 @@ use crate::state::ScreenshotData;
 
 /// Capture the screen where the mouse cursor is currently located
 pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
+    let t0 = std::time::Instant::now();
+
     // Get all monitors
     let monitors = Monitor::all().map_err(|e| AppError::CaptureError(e.to_string()))?;
 
@@ -16,7 +16,6 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
     }
 
     // For MVP, capture the primary monitor (first one)
-    // TODO: detect cursor position and capture the correct monitor
     let target_monitor = &monitors[0];
 
     // Capture the screen image
@@ -24,10 +23,17 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
         .capture_image()
         .map_err(|e| AppError::CaptureError(e.to_string()))?;
 
-    // Encode to PNG -> Base64
-    let base64 = encode_image_to_base64(&image)?;
+    let t_capture = t0.elapsed();
+    eprintln!("[perf] Screen capture: {:?}", t_capture);
 
-    // Calculate logical dimensions - scale_factor() returns Result in xcap 0.8
+    // Write JPEG to temp file (much faster than base64 IPC)
+    let temp_path = std::env::temp_dir().join("visiontrans-screenshot.jpg");
+    write_jpeg_to_file(&image, &temp_path)?;
+
+    let t_encode = t0.elapsed();
+    eprintln!("[perf] JPEG write to file: {:?} (total: {:?})", t_encode - t_capture, t_encode);
+
+    // Calculate logical dimensions
     let scale_factor = target_monitor
         .scale_factor()
         .map(|f| f as f64)
@@ -36,23 +42,22 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
     let logical_height = (image.height() as f64 / scale_factor) as u32;
 
     Ok(ScreenshotData {
-        base64,
+        file_path: temp_path.to_string_lossy().to_string(),
         logical_width,
         logical_height,
         scale_factor,
     })
 }
 
-fn encode_image_to_base64(image: &image::RgbaImage) -> Result<String, AppError> {
-    // Convert RGBA to RGB for JPEG encoding (JPEG doesn't support alpha)
+fn write_jpeg_to_file(image: &image::RgbaImage, path: &std::path::Path) -> Result<(), AppError> {
+    // Convert RGBA to RGB for JPEG
     let rgb_image: image::RgbImage = image::DynamicImage::ImageRgba8(image.clone()).to_rgb8();
 
-    let mut buffer = Cursor::new(Vec::with_capacity(rgb_image.len() / 4));
+    let file = std::fs::File::create(path)
+        .map_err(|e| AppError::CaptureError(format!("Failed to create temp file: {}", e)))?;
+    let mut writer = std::io::BufWriter::new(file);
 
-    // Use JPEG encoding - much faster than PNG for screenshots
-    // Quality 85 gives good visual quality with fast encoding
-    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buffer, 85);
-
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, 85);
     encoder
         .write_image(
             rgb_image.as_raw(),
@@ -62,6 +67,5 @@ fn encode_image_to_base64(image: &image::RgbaImage) -> Result<String, AppError> 
         )
         .map_err(|e| AppError::CaptureError(e.to_string()))?;
 
-    let jpeg_bytes = buffer.into_inner();
-    Ok(base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes))
+    Ok(())
 }

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_store::StoreExt;
@@ -48,6 +48,7 @@ fn get_configured_hotkey(app: &AppHandle) -> String {
 }
 
 pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
+    let t0 = std::time::Instant::now();
     let state = app.state::<AppState>();
 
     // Prevent duplicate triggers
@@ -106,6 +107,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         }
     }
 
+    // Capture screenshot (writes to temp file)
     let screenshot_data = match screenshot::capture_current_screen() {
         Ok(data) => data,
         Err(e) => {
@@ -114,51 +116,77 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         }
     };
 
+    let t_capture = t0.elapsed();
+
+    // Store screenshot data
     *state.last_screenshot.lock().unwrap() = Some(screenshot_data.clone());
-    create_overlay_window(app, &screenshot_data)?;
+
+    // Show overlay window (reuse if exists, create if not)
+    show_overlay_window(app, &screenshot_data)?;
+
+    let t_total = t0.elapsed();
+    eprintln!("[perf] Total trigger_capture: {:?} (capture: {:?}, window: {:?})",
+        t_total, t_capture, t_total - t_capture);
+
     Ok(())
 }
 
-/// Set native NSWindow properties for fullscreen overlay.
-/// Must be called AFTER window.show() as Tauri may reset properties during show.
+/// Set native NSWindow properties for fullscreen overlay on macOS.
 #[cfg(target_os = "macos")]
-fn set_overlay_ns_window_props(window: &tauri::WebviewWindow) {
+fn set_overlay_ns_window_props(app: &AppHandle, window: &tauri::WebviewWindow) {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
 
     if let Ok(ptr) = window.ns_window() {
-        let ns_window = ptr as *mut AnyObject;
-        unsafe {
-            // Window level 2000 (kCGScreenSaverWindowLevelKey range)
-            // Higher than 1000 to ensure it covers everything
-            let _: () = msg_send![ns_window, setLevel: 2000_i64];
-
-            // Collection behavior:
-            // canJoinAllSpaces (1) | stationary (16) | ignoresCycle (64) | fullScreenAuxiliary (256)
-            let behavior: usize = 1 | 16 | 64 | 256;
-            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-
-            // Ensure mouse events are received
-            let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-
-            eprintln!("[overlay] Native props set: level=2000, behavior={}", behavior);
-        }
+        let ns_window_addr = ptr as usize;
+        let app_handle = app.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            if ns_window_addr != 0 {
+                unsafe {
+                    let ns_window = ns_window_addr as *mut AnyObject;
+                    let _: () = msg_send![ns_window, setLevel: 2000_i64];
+                    let behavior: usize = 1 | 16 | 64 | 256;
+                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                }
+            }
+        });
     }
 }
 
-fn create_overlay_window(
+fn show_overlay_window(
     app: &AppHandle,
     screenshot: &crate::state::ScreenshotData,
 ) -> Result<(), AppError> {
-    use tauri::WebviewWindowBuilder;
-
-    // Close existing overlay
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.close();
-    }
-
     let overlay_w = screenshot.logical_width as f64;
     let overlay_h = screenshot.logical_height as f64;
+
+    // Try to reuse existing overlay window (pre-created or from previous capture)
+    if let Some(existing) = app.get_webview_window("overlay") {
+        eprintln!("[overlay] Reusing existing overlay window");
+
+        // Resize to match current screen
+        let _ = existing.set_size(tauri::LogicalSize::new(overlay_w, overlay_h));
+        let _ = existing.set_position(tauri::LogicalPosition::new(0.0, 0.0));
+
+        // Emit event to tell frontend to reload screenshot
+        let _ = app.emit("screenshot-ready", serde_json::json!({
+            "filePath": screenshot.file_path
+        }));
+
+        // Show and configure
+        let _ = existing.show();
+        let _ = existing.set_always_on_top(true);
+        #[cfg(target_os = "macos")]
+        set_overlay_ns_window_props(app, &existing);
+        let _ = existing.set_focus();
+
+        return Ok(());
+    }
+
+    // Create new overlay window (first time or if pre-creation failed)
+    eprintln!("[overlay] Creating new overlay window");
+    use tauri::WebviewWindowBuilder;
 
     let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
         .title("")
@@ -172,42 +200,11 @@ fn create_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // Show window immediately (no delay) following expert's recommended order:
-    // 1. window.show()
-    // 2. window.set_always_on_top(true)
-    // 3. Native API: set level + collectionBehavior
-    // 4. window.set_focus()
-    // The WebView will load the screenshot content in the background.
-
-    // Step 1: Show the window immediately
+    // Show immediately
     let _ = window.show();
-
-    // Step 2: Force always on top
     let _ = window.set_always_on_top(true);
-
-    // Step 3: Override with native NSWindow properties
     #[cfg(target_os = "macos")]
-    {
-        let ns_window_addr: usize = window.ns_window()
-            .map(|ptr| ptr as usize)
-            .unwrap_or(0);
-        let app_handle = app.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            if ns_window_addr != 0 {
-                use objc2::msg_send;
-                use objc2::runtime::AnyObject;
-                unsafe {
-                    let ns_window = ns_window_addr as *mut AnyObject;
-                    let _: () = msg_send![ns_window, setLevel: 2000_i64];
-                    let behavior: usize = 1 | 16 | 64 | 256;
-                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                }
-            }
-        });
-    }
-
-    // Step 4: Get focus
+    set_overlay_ns_window_props(app, &window);
     let _ = window.set_focus();
 
     Ok(())
