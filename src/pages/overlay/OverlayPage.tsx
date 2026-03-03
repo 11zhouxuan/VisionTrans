@@ -271,16 +271,14 @@ export default function OverlayPage() {
           drawCtx.restore();
         }
       }
-      // Update React state first
+      // Update React state
       setBgImage(img);
       setScreenshotBase64(data.base64);
-      // Wait for browser to composite the canvas frame, then show window
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // Double rAF ensures the frame is actually painted
-          invoke('show_overlay_window').catch(() => {});
-        });
-      });
+      // Small delay to let the canvas draw complete, then show window
+      // (can't use requestAnimationFrame because window is hidden)
+      setTimeout(() => {
+        invoke('show_overlay_window').catch(() => {});
+      }, 16); // ~1 frame at 60fps
     };
     img.onerror = () => {
       // Fallback to base64 if asset:// fails
