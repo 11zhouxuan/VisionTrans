@@ -169,10 +169,8 @@ fn show_overlay_window(
         let _ = existing.set_size(tauri::LogicalSize::new(overlay_w, overlay_h));
         let _ = existing.set_position(tauri::LogicalPosition::new(0.0, 0.0));
 
-        // Emit event to tell frontend to reload screenshot
-        let _ = app.emit("screenshot-ready", serde_json::json!({
-            "filePath": screenshot.file_path
-        }));
+        // Emit event to tell frontend to reload screenshot data
+        let _ = app.emit("screenshot-ready", ());
 
         // Show and configure
         let _ = existing.show();

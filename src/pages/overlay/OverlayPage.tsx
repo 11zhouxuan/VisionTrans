@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSelection } from './hooks/useSelection';
 import SelectionToolbar from './components/SelectionToolbar';
@@ -215,7 +214,7 @@ function getCursorForHandle(handle: AnnotationHandle | null): string | null {
 export default function OverlayPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
   const [markTool, setMarkTool] = useState<MarkTool>('rect');
   const [brushSize, setBrushSize] = useState(4);
   const [brushColor, setBrushColor] = useState('rgba(255, 50, 50, 0.8)');
@@ -246,24 +245,22 @@ export default function OverlayPage() {
     setRedoCount(0);
   }, []);
 
-  // Fetch screenshot data - use file path + convertFileSrc for fast loading
+  // Fetch screenshot data
   useEffect(() => {
     const fetchScreenshot = async () => {
       try {
         const data = await invoke<ScreenshotData>('get_screenshot');
-        // Convert local file path to asset:// URL that WebView can load directly
-        const url = convertFileSrc(data.filePath);
-        setScreenshotUrl(url + '?t=' + Date.now()); // cache bust
+        setScreenshotBase64(data.base64);
       } catch (err) {
         console.error('Failed to get screenshot:', err);
       }
     };
     fetchScreenshot();
 
-    // Also listen for screenshot-ready event (for pre-created window reuse)
-    const unlisten = listen<{ filePath: string }>('screenshot-ready', (event) => {
-      const url = convertFileSrc(event.payload.filePath);
-      setScreenshotUrl(url + '?t=' + Date.now());
+    // Listen for screenshot-ready event (for pre-created window reuse)
+    const unlisten = listen('screenshot-ready', () => {
+      // Re-fetch screenshot data when a new capture is ready
+      fetchScreenshot();
     });
 
     return () => { unlisten.then(fn => fn()); };
@@ -271,7 +268,7 @@ export default function OverlayPage() {
 
   // Load background image and initialize canvases
   useEffect(() => {
-    if (!canvasRef.current || !screenshotUrl) return;
+    if (!canvasRef.current || !screenshotBase64) return;
     const canvas = canvasRef.current;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = window.innerWidth * dpr;
@@ -283,8 +280,8 @@ export default function OverlayPage() {
 
     const img = new Image();
     img.onload = () => setBgImage(img);
-    img.src = screenshotUrl;
-  }, [screenshotUrl]);
+    img.src = `data:image/jpeg;base64,${screenshotBase64}`;
+  }, [screenshotBase64]);
 
   // Render all annotations on the canvas (called after selection redraw)
   // NOTE: This callback must have stable identity to prevent the useEffect

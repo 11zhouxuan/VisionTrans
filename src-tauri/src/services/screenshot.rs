@@ -1,3 +1,4 @@
+use base64::Engine;
 use image::ImageEncoder;
 use xcap::Monitor;
 
@@ -24,14 +25,13 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
         .map_err(|e| AppError::CaptureError(e.to_string()))?;
 
     let t_capture = t0.elapsed();
-    eprintln!("[perf] Screen capture: {:?}", t_capture);
+    eprintln!("[perf] Screen capture: {:?} ({}x{})", t_capture, image.width(), image.height());
 
-    // Write JPEG to temp file (much faster than base64 IPC)
-    let temp_path = std::env::temp_dir().join("visiontrans-screenshot.jpg");
-    write_jpeg_to_file(&image, &temp_path)?;
+    // Fast JPEG encoding: manually convert RGBA→RGB without cloning the entire image
+    let base64 = encode_image_fast(&image)?;
 
     let t_encode = t0.elapsed();
-    eprintln!("[perf] JPEG write to file: {:?} (total: {:?})", t_encode - t_capture, t_encode);
+    eprintln!("[perf] JPEG encode + base64: {:?} (total: {:?})", t_encode - t_capture, t_encode);
 
     // Calculate logical dimensions
     let scale_factor = target_monitor
@@ -42,30 +42,36 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
     let logical_height = (image.height() as f64 / scale_factor) as u32;
 
     Ok(ScreenshotData {
-        file_path: temp_path.to_string_lossy().to_string(),
+        base64,
         logical_width,
         logical_height,
         scale_factor,
     })
 }
 
-fn write_jpeg_to_file(image: &image::RgbaImage, path: &std::path::Path) -> Result<(), AppError> {
-    // Convert RGBA to RGB for JPEG
-    let rgb_image: image::RgbImage = image::DynamicImage::ImageRgba8(image.clone()).to_rgb8();
+/// Fast JPEG encoding: convert RGBA→RGB without cloning, then encode JPEG at quality 70
+fn encode_image_fast(image: &image::RgbaImage) -> Result<String, AppError> {
+    let (width, height) = (image.width(), image.height());
+    let rgba_bytes = image.as_raw();
 
-    let file = std::fs::File::create(path)
-        .map_err(|e| AppError::CaptureError(format!("Failed to create temp file: {}", e)))?;
-    let mut writer = std::io::BufWriter::new(file);
+    // Convert RGBA to RGB in-place without cloning the entire DynamicImage
+    // This avoids the ~60MB clone that was causing 3s delay
+    let mut rgb_bytes = Vec::with_capacity((width * height * 3) as usize);
+    for chunk in rgba_bytes.chunks_exact(4) {
+        rgb_bytes.push(chunk[0]); // R
+        rgb_bytes.push(chunk[1]); // G
+        rgb_bytes.push(chunk[2]); // B
+    }
 
-    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, 85);
+    // Encode JPEG with lower quality for speed (70 is still good for screenshots)
+    let mut jpeg_buf = Vec::with_capacity(rgb_bytes.len() / 10);
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+        std::io::Cursor::new(&mut jpeg_buf),
+        70,
+    );
     encoder
-        .write_image(
-            rgb_image.as_raw(),
-            rgb_image.width(),
-            rgb_image.height(),
-            image::ExtendedColorType::Rgb8,
-        )
+        .write_image(&rgb_bytes, width, height, image::ExtendedColorType::Rgb8)
         .map_err(|e| AppError::CaptureError(e.to_string()))?;
 
-    Ok(())
+    Ok(base64::engine::general_purpose::STANDARD.encode(&jpeg_buf))
 }
