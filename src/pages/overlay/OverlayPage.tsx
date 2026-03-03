@@ -669,16 +669,14 @@ export default function OverlayPage() {
             if (base64) {
               try {
                 const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
+                const { Image } = await import('@tauri-apps/api/image');
                 const binaryStr = atob(base64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-                await writeImage(bytes);
+                const img = await Image.fromBytes(bytes);
+                await writeImage(img);
               } catch (err) {
-                console.error('Failed to copy to clipboard:', err);
-                try {
-                  const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
-                  await writeText(`data:image/png;base64,${base64}`);
-                } catch {}
+                console.error('Failed to copy image to clipboard:', err);
               }
             }
             try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
