@@ -261,6 +261,8 @@ export default function OverlayPage() {
     img.onload = () => {
       setBgImage(img);
       setScreenshotBase64(data.base64); // keep for reference
+      // Show the overlay window AFTER image is loaded (prevents flash)
+      invoke('show_overlay_window').catch(() => {});
     };
     img.onerror = () => {
       // Fallback to base64 if asset:// fails

@@ -32,6 +32,7 @@ pub fn run() {
             commands::translate::test_api_connection,
             commands::translate::release_result_slot,
             commands::window::open_settings_window,
+            commands::window::show_overlay_window,
             commands::window::close_overlay,
             commands::permission::check_permission,
             commands::permission::request_permission,

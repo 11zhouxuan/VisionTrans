@@ -170,14 +170,8 @@ fn show_overlay_window(
         let _ = existing.set_position(tauri::LogicalPosition::new(0.0, 0.0));
 
         // Emit event to tell frontend to reload screenshot data
+        // Frontend will call show_overlay_window AFTER image is loaded (no flash)
         let _ = app.emit("screenshot-ready", ());
-
-        // Show and configure
-        let _ = existing.show();
-        let _ = existing.set_always_on_top(true);
-        #[cfg(target_os = "macos")]
-        set_overlay_ns_window_props(app, &existing);
-        let _ = existing.set_focus();
 
         return Ok(());
     }

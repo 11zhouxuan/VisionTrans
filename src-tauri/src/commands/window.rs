@@ -36,6 +36,37 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Show overlay window (called by frontend after screenshot is loaded)
+#[tauri::command]
+pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
+    if let Some(window) = app.get_webview_window("overlay") {
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
+        #[cfg(target_os = "macos")]
+        {
+            use objc2::msg_send;
+            use objc2::runtime::AnyObject;
+            if let Ok(ptr) = window.ns_window() {
+                let ns_window_addr = ptr as usize;
+                let app_handle = app.clone();
+                let _ = app_handle.run_on_main_thread(move || {
+                    if ns_window_addr != 0 {
+                        unsafe {
+                            let ns_window = ns_window_addr as *mut AnyObject;
+                            let _: () = msg_send![ns_window, setLevel: 2000_i64];
+                            let behavior: usize = 1 | 16 | 64 | 256;
+                            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                            let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                        }
+                    }
+                });
+            }
+        }
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
 /// Close overlay window and reset capture state
 #[tauri::command]
 pub async fn close_overlay(
