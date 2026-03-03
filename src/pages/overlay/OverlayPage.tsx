@@ -595,7 +595,8 @@ export default function OverlayPage() {
       const pos = { x: 80, y: 64 };
       await invoke('start_translation', { imageBase64: croppedBase64, position: pos });
     } catch (err) { console.error('Failed:', err); }
-    try { await getCurrentWindow().close(); } catch {}
+    // Use close_overlay (hides on macOS for reuse) instead of direct close
+    try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
   }, [cropSelection, selection]);
 
   const handleCancel = useCallback(async () => {
