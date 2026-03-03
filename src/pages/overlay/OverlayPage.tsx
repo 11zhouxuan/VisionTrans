@@ -652,7 +652,7 @@ export default function OverlayPage() {
   void annotationVersion;
 
   return (
-    <div className="fixed inset-0 no-select" style={{ cursor: getCursor() }}
+    <div className="fixed inset-0 no-select bg-black" style={{ cursor: getCursor() }}
       onContextMenu={(e) => { e.preventDefault(); handleCancel(); }}>
       <canvas ref={canvasRef} className="w-full h-full"
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
