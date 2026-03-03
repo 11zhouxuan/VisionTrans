@@ -32,11 +32,20 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 
-# Optimize image encoding even in debug builds (JPEG encoding is 50x slower without this)
+# Optimize image encoding even in debug builds (encoding is 10-50x slower without this)
 [profile.dev.package.image]
 opt-level = 3
 
 [profile.dev.package.base64]
+opt-level = 3
+
+[profile.dev.package.flate2]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
 opt-level = 3
 
 [target.'cfg(target_os = "macos")'.dependencies]

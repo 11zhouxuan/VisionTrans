@@ -107,7 +107,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         }
     }
 
-    // Capture screenshot (writes to temp file)
+    // Capture screenshot (writes BMP to temp file + JPEG base64 fallback)
     let screenshot_data = match screenshot::capture_current_screen() {
         Ok(data) => data,
         Err(e) => {
@@ -121,7 +121,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     // Store screenshot data
     *state.last_screenshot.lock().unwrap() = Some(screenshot_data.clone());
 
-    // Show overlay window (reuse if exists, create if not)
+    // Show overlay window immediately (reuse if exists, create if not)
     show_overlay_window(app, &screenshot_data)?;
 
     let t_total = t0.elapsed();

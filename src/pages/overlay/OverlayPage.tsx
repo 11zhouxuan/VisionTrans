@@ -266,13 +266,15 @@ export default function OverlayPage() {
       // Fallback to base64 if asset:// fails
       console.warn('asset:// load failed, falling back to base64');
       img.onerror = null;
-      img.src = `data:image/jpeg;base64,${data.base64}`;
+      if (data.base64) {
+        img.src = `data:image/png;base64,${data.base64}`;
+      }
     };
-    // Try asset:// protocol first (fast, bypasses IPC)
+    // Try asset:// protocol first (fast, bypasses IPC entirely)
     if (data.filePath) {
       img.src = convertFileSrc(data.filePath) + '?t=' + Date.now();
-    } else {
-      img.src = `data:image/jpeg;base64,${data.base64}`;
+    } else if (data.base64) {
+      img.src = `data:image/png;base64,${data.base64}`;
     }
   }, []);
 
