@@ -59,8 +59,18 @@ pub fn capture_current_screen() -> Result<ScreenshotData, AppError> {
     let logical_width = (image.width() as f64 / scale_factor) as u32;
     let logical_height = (image.height() as f64 / scale_factor) as u32;
 
+    // Also encode base64 for IPC fallback (in case asset:// doesn't work)
+    let t_b64 = std::time::Instant::now();
+    let png_bytes = std::fs::read(&temp_path)
+        .map_err(|e| AppError::CaptureError(format!("Failed to read PNG: {}", e)))?;
+    let base64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+    eprintln!("[perf] Base64 encode: {:?} ({} KB)", t_b64.elapsed(), base64.len() / 1024);
+
+    let t_total2 = t0.elapsed();
+    eprintln!("[perf] Total with base64: {:?}", t_total2);
+
     Ok(ScreenshotData {
-        base64: String::new(), // Empty - loaded via asset:// protocol instead
+        base64,
         file_path: temp_path.to_string_lossy().to_string(),
         logical_width,
         logical_height,
