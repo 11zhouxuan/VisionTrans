@@ -260,10 +260,22 @@ export default function OverlayPage() {
 
     const img = new Image();
     img.onload = () => {
-      setBgImage(img);
-      setScreenshotBase64(data.base64); // keep for reference
-      // Show the overlay window AFTER image is loaded (prevents flash)
+      // Draw the screenshot to canvas IMMEDIATELY (before React re-render)
+      // This prevents the flash between show() and canvas render
+      if (canvasRef.current) {
+        const drawCtx = canvasRef.current.getContext('2d');
+        if (drawCtx) {
+          drawCtx.save();
+          drawCtx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+          drawCtx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+          drawCtx.restore();
+        }
+      }
+      // Now show the window (canvas already has content, no flash)
       invoke('show_overlay_window').catch(() => {});
+      // Then update React state (will trigger proper redraw with selection)
+      setBgImage(img);
+      setScreenshotBase64(data.base64);
     };
     img.onerror = () => {
       // Fallback to base64 if asset:// fails
