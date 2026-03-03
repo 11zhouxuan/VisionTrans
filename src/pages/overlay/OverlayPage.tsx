@@ -292,20 +292,10 @@ export default function OverlayPage() {
 
     // Listen for screenshot-ready event (for pre-created window reuse)
     const unlisten = listen('screenshot-ready', () => {
-      // Clear old content immediately to prevent flash of old screenshot
-      setBgImage(null);
-      setScreenshotBase64(null);
-      // Clear canvas to black
-      if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#000';
-          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        }
-      }
-      // Clear annotations
+      // Clear annotations but keep old screenshot visible until new one loads
+      // (this prevents the black flash between screenshots)
       annotationsRef.current = [];
-      // Fetch new screenshot
+      // Fetch new screenshot (will replace old one when loaded)
       fetchScreenshot();
     });
 
