@@ -292,6 +292,20 @@ export default function OverlayPage() {
 
     // Listen for screenshot-ready event (for pre-created window reuse)
     const unlisten = listen('screenshot-ready', () => {
+      // Clear old content immediately to prevent flash of old screenshot
+      setBgImage(null);
+      setScreenshotBase64(null);
+      // Clear canvas to black
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
+      }
+      // Clear annotations
+      annotationsRef.current = [];
+      // Fetch new screenshot
       fetchScreenshot();
     });
 

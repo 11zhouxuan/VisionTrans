@@ -11,9 +11,9 @@ body {
   background: transparent;
 }
 
-/* Overlay window - black background to prevent white flash */
+/* Overlay window - black background to prevent white flash during reload */
 html {
-  background: transparent;
+  background: #000;
 }
 
 /* Hide macOS traffic light buttons on result window */
