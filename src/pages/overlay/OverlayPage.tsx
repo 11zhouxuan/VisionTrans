@@ -271,11 +271,16 @@ export default function OverlayPage() {
           drawCtx.restore();
         }
       }
-      // Now show the window (canvas already has content, no flash)
-      invoke('show_overlay_window').catch(() => {});
-      // Then update React state (will trigger proper redraw with selection)
+      // Update React state first
       setBgImage(img);
       setScreenshotBase64(data.base64);
+      // Wait for browser to composite the canvas frame, then show window
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          // Double rAF ensures the frame is actually painted
+          invoke('show_overlay_window').catch(() => {});
+        });
+      });
     };
     img.onerror = () => {
       // Fallback to base64 if asset:// fails
