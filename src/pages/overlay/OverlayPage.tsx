@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSelection } from './hooks/useSelection';
 import SelectionToolbar from './components/SelectionToolbar';
@@ -245,30 +245,9 @@ export default function OverlayPage() {
     setRedoCount(0);
   }, []);
 
-  // Fetch screenshot data
-  useEffect(() => {
-    const fetchScreenshot = async () => {
-      try {
-        const data = await invoke<ScreenshotData>('get_screenshot');
-        setScreenshotBase64(data.base64);
-      } catch (err) {
-        console.error('Failed to get screenshot:', err);
-      }
-    };
-    fetchScreenshot();
-
-    // Listen for screenshot-ready event (for pre-created window reuse)
-    const unlisten = listen('screenshot-ready', () => {
-      // Re-fetch screenshot data when a new capture is ready
-      fetchScreenshot();
-    });
-
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
-
-  // Load background image and initialize canvases
-  useEffect(() => {
-    if (!canvasRef.current || !screenshotBase64) return;
+  // Load screenshot image from file or base64
+  const loadScreenshotImage = useCallback((data: ScreenshotData) => {
+    if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = window.innerWidth * dpr;
@@ -279,9 +258,43 @@ export default function OverlayPage() {
     if (ctx) ctx.scale(dpr, dpr);
 
     const img = new Image();
-    img.onload = () => setBgImage(img);
-    img.src = `data:image/jpeg;base64,${screenshotBase64}`;
-  }, [screenshotBase64]);
+    img.onload = () => {
+      setBgImage(img);
+      setScreenshotBase64(data.base64); // keep for reference
+    };
+    img.onerror = () => {
+      // Fallback to base64 if asset:// fails
+      console.warn('asset:// load failed, falling back to base64');
+      img.onerror = null;
+      img.src = `data:image/jpeg;base64,${data.base64}`;
+    };
+    // Try asset:// protocol first (fast, bypasses IPC)
+    if (data.filePath) {
+      img.src = convertFileSrc(data.filePath) + '?t=' + Date.now();
+    } else {
+      img.src = `data:image/jpeg;base64,${data.base64}`;
+    }
+  }, []);
+
+  // Fetch screenshot data
+  useEffect(() => {
+    const fetchScreenshot = async () => {
+      try {
+        const data = await invoke<ScreenshotData>('get_screenshot');
+        loadScreenshotImage(data);
+      } catch (err) {
+        console.error('Failed to get screenshot:', err);
+      }
+    };
+    fetchScreenshot();
+
+    // Listen for screenshot-ready event (for pre-created window reuse)
+    const unlisten = listen('screenshot-ready', () => {
+      fetchScreenshot();
+    });
+
+    return () => { unlisten.then(fn => fn()); };
+  }, [loadScreenshotImage]);
 
   // Render all annotations on the canvas (called after selection redraw)
   // NOTE: This callback must have stable identity to prevent the useEffect

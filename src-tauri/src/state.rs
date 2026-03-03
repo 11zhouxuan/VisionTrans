@@ -62,8 +62,11 @@ impl Default for AppState {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ScreenshotData {
-    /// Base64 encoded JPEG image
+    /// Base64 encoded JPEG image (fallback for IPC)
     pub base64: String,
+    /// Path to temp JPEG file (for fast asset:// loading)
+    #[serde(rename = "filePath")]
+    pub file_path: String,
     /// Logical width (CSS pixels)
     #[serde(rename = "logicalWidth")]
     pub logical_width: u32,

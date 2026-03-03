@@ -4,6 +4,7 @@
   "windows": ["main", "overlay", "result*", "settings", "onboarding", "wordbook"],
   "permissions": [
     "core:default",
+    "core:app:default",
     "core:window:allow-create",
     "core:window:allow-close",
     "core:window:allow-set-size",
