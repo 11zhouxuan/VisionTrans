@@ -17,6 +17,8 @@ const MAX_CARD_HEIGHT = 500;
 interface MultiWordItem {
   source: string;
   phonetic?: string;
+  forms?: string;
+  etymology?: string;
   definitions?: Array<{ pos: string; text: string }>;
   context?: string;
   examples?: Array<{ en: string; target: string }>;
@@ -114,6 +116,8 @@ function parseXmlTranslation(text: string): ParsedTranslation {
         return {
           source: el.querySelector('source')?.textContent?.trim() || '',
           phonetic: el.querySelector('phonetic')?.textContent?.trim(),
+          forms: el.querySelector('forms')?.textContent?.trim(),
+          etymology: el.querySelector('etymology')?.textContent?.trim(),
           definitions: definitions.length > 0 ? definitions : undefined,
           context: el.querySelector('context')?.textContent?.trim(),
           examples: examples.length > 0 ? examples : undefined,
@@ -180,9 +184,6 @@ function WordResult({ data }: { data: ParsedTranslation }) {
         <span className="text-base font-bold text-gray-900">{data.source}</span>
         {data.phonetic && <span className="ml-2 text-xs text-gray-400">{data.phonetic}</span>}
       </div>
-      {data.forms && (
-        <div className="text-xs text-gray-400 -mt-1">{data.forms}</div>
-      )}
       {data.definitions && data.definitions.length > 0 && (
         <div>
           <SectionLabel>释义</SectionLabel>
@@ -191,12 +192,6 @@ function WordResult({ data }: { data: ParsedTranslation }) {
               <div key={i}>{d.pos && <span className="text-gray-500">{d.pos}. </span>}{d.text}</div>
             ))}
           </div>
-        </div>
-      )}
-      {data.etymology && (
-        <div>
-          <SectionLabel>🌱 词根记忆</SectionLabel>
-          <div className="mt-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1.5 rounded">{data.etymology}</div>
         </div>
       )}
       {data.context && (
@@ -216,6 +211,18 @@ function WordResult({ data }: { data: ParsedTranslation }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+      {data.forms && (
+        <div>
+          <SectionLabel>📝 词形变化</SectionLabel>
+          <div className="mt-1 text-xs text-gray-500">{data.forms}</div>
+        </div>
+      )}
+      {data.etymology && (
+        <div>
+          <SectionLabel>🌱 词根记忆</SectionLabel>
+          <div className="mt-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1.5 rounded">{data.etymology}</div>
         </div>
       )}
     </div>
@@ -328,6 +335,18 @@ function MultiResult({ data }: { data: ParsedTranslation }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {item.forms && (
+            <div className="mt-1">
+              <SectionLabel>📝 词形变化</SectionLabel>
+              <div className="mt-1 text-xs text-gray-500">{item.forms}</div>
+            </div>
+          )}
+          {item.etymology && (
+            <div className="mt-1">
+              <SectionLabel>🌱 词根记忆</SectionLabel>
+              <div className="mt-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1.5 rounded">{item.etymology}</div>
             </div>
           )}
         </div>

@@ -221,7 +221,7 @@ pub async fn translate(
          当用户用多个矩形框/箭头分别标记了多个不同位置的文本时使用此格式。\n\
          **重要：每个 item 的内容丰富度应与单独翻译时完全一致，不要因为是多个就省略细节。**\n\
          每个 item 根据其内容类型提供完整信息：\n\
-         - 单词 item：包含 phonetic、definitions、context、examples\n\
+         - 单词 item：包含 phonetic、definitions、context、examples、forms（词形变化）、etymology（词根记忆）\n\
          - 短语 item：包含 target（翻译）、context、grammar（核心句式）、vocabulary（重点词汇）\n\
          - 句子 item：包含 target（翻译）、context\n\
          ```xml\n\
@@ -229,13 +229,15 @@ pub async fn translate(
          <thinking>简短分析：推断源语言，用户分别标记了哪些内容（不超过3句话）</thinking>\n\
          <source-language>源语言名称</source-language>\n\
          <translation type=\"multi\">\n\
-         <!-- 单词 item 示例 -->\n\
+         <!-- 单词 item 示例（与单独 word 格式一样详细） -->\n\
          <item>\n\
          <source>第一个单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
+         <forms>词形变化</forms>\n\
          <definitions>\n\
          <def pos=\"词性\">释义</def>\n\
          </definitions>\n\
+         <etymology>词根词缀拆解</etymology>\n\
          <context>结合上下文的具体含义（一句话）</context>\n\
          <examples>\n\
          <example>\n\

@@ -417,6 +417,8 @@ function WordRow({
           type: (isWord ? 'word' : 'phrase') as 'word' | 'phrase',
           source: matchedItem.source,
           phonetic: matchedItem.phonetic,
+          forms: matchedItem.forms,
+          etymology: matchedItem.etymology,
           definitions: matchedItem.definitions,
           context: matchedItem.context,
           examples: matchedItem.examples,

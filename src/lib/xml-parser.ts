@@ -2,6 +2,8 @@
 export interface MultiWordItem {
   source: string;
   phonetic?: string;
+  forms?: string;
+  etymology?: string;
   definitions?: Array<{ pos: string; text: string }>;
   context?: string;
   examples?: Array<{ en: string; target: string }>;
@@ -91,6 +93,8 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
         return {
           source: el.querySelector('source')?.textContent?.trim() || '',
           phonetic: el.querySelector('phonetic')?.textContent?.trim(),
+          forms: el.querySelector('forms')?.textContent?.trim(),
+          etymology: el.querySelector('etymology')?.textContent?.trim(),
           definitions: definitions.length > 0 ? definitions : undefined,
           context: el.querySelector('context')?.textContent?.trim(),
           examples: examples.length > 0 ? examples : undefined,
