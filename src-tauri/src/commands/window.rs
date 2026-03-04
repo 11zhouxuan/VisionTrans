@@ -91,6 +91,11 @@ pub async fn close_overlay(
             // (e.g., file access permission) that appears afterwards may be
             // blocked by the invisible high-level window, causing a deadlock
             // where the user cannot click anything and must force-restart.
+            //
+            // NOTE: We only reset the window LEVEL, not collectionBehavior.
+            // collectionBehavior includes canJoinAllSpaces which must persist
+            // so the window can appear on fullscreen Spaces when reused.
+            // Resetting it would cause a Space switch on next show().
             if let Ok(ptr) = window.ns_window() {
                 let ns_window_addr = ptr as usize;
                 let app_clone = app.clone();
@@ -100,10 +105,10 @@ pub async fn close_overlay(
                             use objc2::msg_send;
                             use objc2::runtime::AnyObject;
                             let ns_window = ns_window_addr as *mut AnyObject;
-                            // Reset to normal window level
+                            // Reset to normal window level (prevents deadlock)
                             let _: () = msg_send![ns_window, setLevel: 0_i64];
-                            // Reset collection behavior to default
-                            let _: () = msg_send![ns_window, setCollectionBehavior: 0_usize];
+                            // DO NOT reset collectionBehavior — keep canJoinAllSpaces
+                            // so the window works correctly on fullscreen Spaces
                         }
                     }
                 });
