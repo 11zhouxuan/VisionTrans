@@ -410,10 +410,12 @@ export default function ResultCard() {
   useEffect(() => {
     if (result?.translation && parsed) {
       if (parsed.type === 'multi' && parsed.items?.length) {
-        // Save each word separately (multi → individual "word" entries)
+        // Save each item separately with correct type detection
         parsed.items.forEach((item) => {
-          console.log('[wordbook] Auto-saving multi-word item:', item.source);
-          saveWordToWordbook(item.source, result.translation, 'word', result.sourceLanguage, result.targetLanguage, result.imageBase64)
+          // Determine type: has definitions → word, has target/grammar → phrase
+          const itemType = item.definitions && item.definitions.length > 0 ? 'word' : 'phrase';
+          console.log('[wordbook] Auto-saving multi item:', item.source, 'type:', itemType);
+          saveWordToWordbook(item.source, result.translation, itemType, result.sourceLanguage, result.targetLanguage, result.imageBase64)
             .then((entry) => console.log('[wordbook] Auto-save success:', entry.id))
             .catch((err) => console.error('[wordbook] Auto-save failed:', err));
         });

@@ -410,18 +410,22 @@ function WordRow({
         item => item.source.toLowerCase() === word.word.toLowerCase()
       );
       if (matchedItem) {
-        // Format as a single word entry
-        const singleWord = {
+        // Determine if this item is a word or phrase based on content
+        const isWord = matchedItem.definitions && matchedItem.definitions.length > 0;
+        const singleEntry = {
           ...parsed,
-          type: 'word' as const,
+          type: (isWord ? 'word' : 'phrase') as 'word' | 'phrase',
           source: matchedItem.source,
           phonetic: matchedItem.phonetic,
           definitions: matchedItem.definitions,
           context: matchedItem.context,
           examples: matchedItem.examples,
+          target: matchedItem.target,
+          grammar: matchedItem.grammar,
+          vocabulary: matchedItem.vocabulary,
           items: undefined,
         };
-        return formatTranslation(singleWord);
+        return formatTranslation(singleEntry);
       }
     }
     return formatTranslation(parsed);

@@ -1,10 +1,14 @@
-/** A single word item in multi-word results (same structure as a full word) */
+/** A single word item in multi-word results */
 export interface MultiWordItem {
   source: string;
   phonetic?: string;
   definitions?: Array<{ pos: string; text: string }>;
   context?: string;
   examples?: Array<{ en: string; target: string }>;
+  // Phrase-level fields
+  target?: string;
+  grammar?: Array<{ name: string; text: string }>;
+  vocabulary?: Array<{ pos: string; text: string }>;
 }
 
 /** Parsed translation result from LLM XML output */
@@ -72,12 +76,25 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
           en: ex.querySelector('en')?.textContent?.trim() || '',
           target: ex.querySelector('target')?.textContent?.trim() || '',
         }));
+        const patternEls = el.querySelectorAll('pattern');
+        const grammar = Array.from(patternEls).map(p => ({
+          name: p.getAttribute('name') || '',
+          text: p.textContent?.trim() || '',
+        }));
+        const wordEls = el.querySelectorAll('vocabulary > word');
+        const vocabulary = Array.from(wordEls).map(w => ({
+          pos: w.getAttribute('pos') || '',
+          text: w.textContent?.trim() || '',
+        }));
         return {
           source: el.querySelector('source')?.textContent?.trim() || '',
           phonetic: el.querySelector('phonetic')?.textContent?.trim(),
           definitions: definitions.length > 0 ? definitions : undefined,
           context: el.querySelector('context')?.textContent?.trim(),
           examples: examples.length > 0 ? examples : undefined,
+          target: el.querySelector('target')?.textContent?.trim(),
+          grammar: grammar.length > 0 ? grammar : undefined,
+          vocabulary: vocabulary.length > 0 ? vocabulary : undefined,
         };
       });
       const allSources = items.map(i => i.source).join(', ');
@@ -136,7 +153,18 @@ export function formatTranslation(parsed: ParsedTranslation): string {
           lines.push(`  ${d.pos ? d.pos + '. ' : ''}${d.text}`);
         });
       }
+      if (item.target) lines.push(`  → ${item.target}`);
       if (item.context) lines.push(`  📌 ${item.context}`);
+      if (item.grammar?.length) {
+        item.grammar.forEach(g => {
+          lines.push(`  【句式】${g.name ? g.name + ': ' : ''}${g.text}`);
+        });
+      }
+      if (item.vocabulary?.length) {
+        item.vocabulary.forEach(v => {
+          lines.push(`  【词汇】${v.pos ? '(' + v.pos + ') ' : ''}${v.text}`);
+        });
+      }
       if (item.examples?.length) {
         item.examples.forEach(ex => {
           lines.push(`  • ${ex.en}`);
