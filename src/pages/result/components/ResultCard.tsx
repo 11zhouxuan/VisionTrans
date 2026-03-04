@@ -487,8 +487,18 @@ export default function ResultCard() {
         className="flex items-center justify-between px-4 pt-3 pb-1 cursor-grab active:cursor-grabbing"
         data-tauri-drag-region
       >
-        <div className="text-xs text-gray-400 pointer-events-none">
-          {result ? `${result.sourceLanguage} → ${result.targetLanguage}` : '翻译中...'}
+        <div className="flex items-center gap-2 pointer-events-none">
+          <span className="text-xs text-gray-400">
+            {result ? `${result.sourceLanguage} → ${result.targetLanguage}` : '翻译中...'}
+          </span>
+          {parsed && (() => {
+            const t = parsed.type;
+            if (t === 'word') return <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">Word</span>;
+            if (t === 'phrase') return <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">Phrase</span>;
+            if (t === 'multi') return <span className="text-[9px] px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded font-medium">Multi</span>;
+            if (t === 'passage') return <span className="text-[9px] px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded font-medium">Passage</span>;
+            return null;
+          })()}
         </div>
         <button
           onClick={handleClose}
