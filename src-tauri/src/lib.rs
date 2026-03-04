@@ -34,6 +34,7 @@ pub fn run() {
             commands::window::open_settings_window,
             commands::window::show_overlay_window,
             commands::window::close_overlay,
+            commands::window::save_screenshot,
             commands::permission::check_permission,
             commands::permission::request_permission,
             commands::wordbook::save_word_to_wordbook,

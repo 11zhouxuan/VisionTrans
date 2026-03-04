@@ -13,6 +13,7 @@ pub enum AppError {
     NoMonitorFound,
     WindowError(String),
     ConfigError(String),
+    IoError(String),
     Internal(String),
 }
 
@@ -30,6 +31,7 @@ impl std::fmt::Display for AppError {
             AppError::NoMonitorFound => write!(f, "未找到显示器"),
             AppError::WindowError(msg) => write!(f, "窗口创建失败: {}", msg),
             AppError::ConfigError(msg) => write!(f, "配置读写错误: {}", msg),
+            AppError::IoError(msg) => write!(f, "文件操作失败: {}", msg),
             AppError::Internal(msg) => write!(f, "内部错误: {}", msg),
         }
     }

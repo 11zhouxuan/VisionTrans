@@ -666,6 +666,10 @@ export default function OverlayPage() {
           canUndo={undoCount > 0} canRedo={redoCount > 0}
           onCopy={async () => {
             const base64 = cropSelection();
+            // CRITICAL: Close overlay FIRST to reset window level.
+            // If we copy first and it triggers a system dialog (e.g., permission),
+            // the high-level overlay window would block the dialog, causing a deadlock.
+            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
             if (base64) {
               try {
                 const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
@@ -679,23 +683,22 @@ export default function OverlayPage() {
                 console.error('Failed to copy image to clipboard:', err);
               }
             }
-            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
           }}
           onSave={async () => {
             const base64 = cropSelection();
+            // CRITICAL: Close overlay FIRST to reset window level.
+            // The old <a download> approach triggered a macOS permission dialog
+            // that was blocked by the high-level overlay, causing a deadlock.
+            // Now we use a Rust command to write directly to ~/Downloads/.
+            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
             if (base64) {
               try {
-                const link = document.createElement('a');
-                link.href = `data:image/png;base64,${base64}`;
-                link.download = `visiontrans-${Date.now()}.png`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                const savedPath = await invoke<string>('save_screenshot', { imageBase64: base64 });
+                console.log('Screenshot saved to:', savedPath);
               } catch (err) {
-                console.error('Failed to save image:', err);
+                console.error('Failed to save screenshot:', err);
               }
             }
-            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
           }}
           onCancel={handleCancel}
         />

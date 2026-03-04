@@ -3,6 +3,8 @@ use tauri::{AppHandle, Manager};
 use crate::errors::AppError;
 use crate::state::AppState;
 
+use base64::Engine;
+
 /// Open settings window
 #[tauri::command]
 pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
@@ -84,6 +86,29 @@ pub async fn close_overlay(
     if let Some(window) = app.get_webview_window("overlay") {
         #[cfg(target_os = "macos")]
         {
+            // CRITICAL: Reset window level to normal BEFORE hiding.
+            // If we leave level=2000 on a hidden window, any system dialog
+            // (e.g., file access permission) that appears afterwards may be
+            // blocked by the invisible high-level window, causing a deadlock
+            // where the user cannot click anything and must force-restart.
+            if let Ok(ptr) = window.ns_window() {
+                let ns_window_addr = ptr as usize;
+                let app_clone = app.clone();
+                let _ = app_clone.run_on_main_thread(move || {
+                    if ns_window_addr != 0 {
+                        unsafe {
+                            use objc2::msg_send;
+                            use objc2::runtime::AnyObject;
+                            let ns_window = ns_window_addr as *mut AnyObject;
+                            // Reset to normal window level
+                            let _: () = msg_send![ns_window, setLevel: 0_i64];
+                            // Reset collection behavior to default
+                            let _: () = msg_send![ns_window, setCollectionBehavior: 0_usize];
+                        }
+                    }
+                });
+            }
+            let _ = window.set_always_on_top(false);
             let _ = window.hide();
         }
         #[cfg(not(target_os = "macos"))]
@@ -93,4 +118,33 @@ pub async fn close_overlay(
     }
 
     Ok(())
+}
+
+/// Save screenshot image to ~/Downloads/ directory
+#[tauri::command]
+pub async fn save_screenshot(image_base64: String) -> Result<String, AppError> {
+    let download_dir = dirs::download_dir().unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+            .join("Downloads")
+    });
+
+    // Ensure directory exists
+    if !download_dir.exists() {
+        std::fs::create_dir_all(&download_dir).map_err(|e| {
+            AppError::IoError(format!("Failed to create Downloads directory: {}", e))
+        })?;
+    }
+
+    let filename = format!("visiontrans-{}.png", chrono::Local::now().format("%Y%m%d-%H%M%S"));
+    let filepath = download_dir.join(&filename);
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&image_base64)
+        .map_err(|e| AppError::IoError(format!("Failed to decode base64: {}", e)))?;
+
+    std::fs::write(&filepath, &bytes)
+        .map_err(|e| AppError::IoError(format!("Failed to write file: {}", e)))?;
+
+    Ok(filepath.to_string_lossy().to_string())
 }
