@@ -17,6 +17,8 @@ export interface ParsedTranslation {
   source: string;
   context?: string;
   phonetic?: string;
+  forms?: string;
+  etymology?: string;
   definitions?: Array<{ pos: string; text: string }>;
   examples?: Array<{ en: string; target: string }>;
   target?: string;
@@ -101,6 +103,8 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
       return { type: 'multi', source: allSources, items };
     } else if (type === 'word') {
       const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
+      const forms = doc.querySelector('forms')?.textContent?.trim();
+      const etymology = doc.querySelector('etymology')?.textContent?.trim();
       const defEls = doc.querySelectorAll('def');
       const definitions = Array.from(defEls).map(el => ({
         pos: el.getAttribute('pos') || '',
@@ -112,7 +116,7 @@ export function parseXmlTranslation(text: string): ParsedTranslation {
         en: el.querySelector('en')?.textContent?.trim() || '',
         target: el.querySelector('target')?.textContent?.trim() || '',
       }));
-      return { type: 'word', source, phonetic, definitions, context, examples };
+      return { type: 'word', source, phonetic, forms, etymology, definitions, context, examples };
     } else if (type === 'passage') {
       const target = doc.querySelector('translation > target')?.textContent?.trim();
       return { type: 'passage', source, target };
@@ -174,6 +178,7 @@ export function formatTranslation(parsed: ParsedTranslation): string {
     });
   } else if (parsed.type === 'word') {
     if (parsed.phonetic) lines.push(parsed.phonetic);
+    if (parsed.forms) lines.push(`【词形】${parsed.forms}`);
     if (parsed.definitions?.length) {
       lines.push('【释义】');
       parsed.definitions.forEach(d => {
@@ -183,6 +188,7 @@ export function formatTranslation(parsed: ParsedTranslation): string {
     if (parsed.context) {
       lines.push(`📌 ${parsed.context}`);
     }
+    if (parsed.etymology) lines.push(`🌱 ${parsed.etymology}`);
     if (parsed.examples?.length) {
       lines.push('【例句】');
       parsed.examples.forEach(ex => {

@@ -172,6 +172,8 @@ pub async fn translate(
          请严格使用以下 XML 格式输出，不要输出任何 XML 之外的内容。\n\
          注意：在 <thinking> 中请推断选中文本的源语言（如 English, 日本語, 中文 等），并在 <source-language> 标签中输出。\n\n\
          **格式1: 单个单词 (type=\"word\")**\n\
+         像词典一样详尽：列出该单词所有常见词性及对应释义，不要只列上下文中的词性。\n\
+         如果是英语单词，还需给出词形变化和词根词缀拆解。\n\
          ```xml\n\
          <result>\n\
          <thinking>简短分析：推断源语言，判断类型（不超过3句话）</thinking>\n\
@@ -179,9 +181,14 @@ pub async fn translate(
          <translation type=\"word\">\n\
          <source>原始单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
+         <forms>词形变化，如：复数 campaigns | 第三人称单数 campaigns | 现在分词 campaigning | 过去式 campaigned | 过去分词 campaigned</forms>\n\
          <definitions>\n\
-         <def pos=\"词性\">释义</def>\n\
+         <!-- 列出所有常见词性的释义，不要遗漏 -->\n\
+         <def pos=\"n\">名词释义1；释义2</def>\n\
+         <def pos=\"v\">动词释义1；释义2</def>\n\
+         <def pos=\"adj\">形容词释义（如有）</def>\n\
          </definitions>\n\
+         <etymology>词根词缀拆解，帮助记忆。如：camp(田野/战场) + -aign(法语后缀) → 原指在战场上的军事行动</etymology>\n\
          <context>结合上下文的具体含义（一句话）</context>\n\
          <examples>\n\
          <example>\n\

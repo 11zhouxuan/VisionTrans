@@ -32,6 +32,8 @@ interface ParsedTranslation {
   context?: string;     // Contextual meaning from the image
   // Word fields
   phonetic?: string;
+  forms?: string;       // Word forms (plural, 3rd person, participles, etc.)
+  etymology?: string;   // Word root/etymology for memorization
   definitions?: Array<{ pos: string; text: string }>;
   examples?: Array<{ en: string; target: string }>;
   // Phrase fields
@@ -127,6 +129,8 @@ function parseXmlTranslation(text: string): ParsedTranslation {
       return { type: 'passage', source, target };
     } else if (type === 'word') {
       const phonetic = doc.querySelector('phonetic')?.textContent?.trim();
+      const forms = doc.querySelector('forms')?.textContent?.trim();
+      const etymology = doc.querySelector('etymology')?.textContent?.trim();
       const defEls = doc.querySelectorAll('def');
       const definitions = Array.from(defEls).map(el => ({
         pos: el.getAttribute('pos') || '',
@@ -138,7 +142,7 @@ function parseXmlTranslation(text: string): ParsedTranslation {
         en: el.querySelector('en')?.textContent?.trim() || '',
         target: el.querySelector('target')?.textContent?.trim() || '',
       }));
-      return { type: 'word', source, phonetic, definitions, context, examples };
+      return { type: 'word', source, phonetic, forms, etymology, definitions, context, examples };
     } else {
       const context = doc.querySelector('context')?.textContent?.trim();
       const target = doc.querySelector('translation > target')?.textContent?.trim();
@@ -176,6 +180,9 @@ function WordResult({ data }: { data: ParsedTranslation }) {
         <span className="text-base font-bold text-gray-900">{data.source}</span>
         {data.phonetic && <span className="ml-2 text-xs text-gray-400">{data.phonetic}</span>}
       </div>
+      {data.forms && (
+        <div className="text-xs text-gray-400 -mt-1">{data.forms}</div>
+      )}
       {data.definitions && data.definitions.length > 0 && (
         <div>
           <SectionLabel>释义</SectionLabel>
@@ -184,6 +191,12 @@ function WordResult({ data }: { data: ParsedTranslation }) {
               <div key={i}>{d.pos && <span className="text-gray-500">{d.pos}. </span>}{d.text}</div>
             ))}
           </div>
+        </div>
+      )}
+      {data.etymology && (
+        <div>
+          <SectionLabel>🌱 词根记忆</SectionLabel>
+          <div className="mt-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1.5 rounded">{data.etymology}</div>
         </div>
       )}
       {data.context && (
