@@ -20,6 +20,10 @@ interface MultiWordItem {
   definitions?: Array<{ pos: string; text: string }>;
   context?: string;
   examples?: Array<{ en: string; target: string }>;
+  // Phrase-level fields (for phrase items in multi mode)
+  target?: string;
+  grammar?: Array<{ name: string; text: string }>;
+  vocabulary?: Array<{ pos: string; text: string }>;
 }
 
 interface ParsedTranslation {
@@ -95,12 +99,25 @@ function parseXmlTranslation(text: string): ParsedTranslation {
           en: ex.querySelector('en')?.textContent?.trim() || '',
           target: ex.querySelector('target')?.textContent?.trim() || '',
         }));
+        const patternEls = el.querySelectorAll('pattern');
+        const grammar = Array.from(patternEls).map(p => ({
+          name: p.getAttribute('name') || '',
+          text: p.textContent?.trim() || '',
+        }));
+        const wordEls = el.querySelectorAll('vocabulary > word');
+        const vocabulary = Array.from(wordEls).map(w => ({
+          pos: w.getAttribute('pos') || '',
+          text: w.textContent?.trim() || '',
+        }));
         return {
           source: el.querySelector('source')?.textContent?.trim() || '',
           phonetic: el.querySelector('phonetic')?.textContent?.trim(),
           definitions: definitions.length > 0 ? definitions : undefined,
           context: el.querySelector('context')?.textContent?.trim(),
           examples: examples.length > 0 ? examples : undefined,
+          target: el.querySelector('target')?.textContent?.trim(),
+          grammar: grammar.length > 0 ? grammar : undefined,
+          vocabulary: vocabulary.length > 0 ? vocabulary : undefined,
         };
       });
       const allSources = items.map(i => i.source).join(', ');
@@ -255,10 +272,36 @@ function MultiResult({ data }: { data: ParsedTranslation }) {
               </div>
             </div>
           )}
+          {item.target && (
+            <div className="mt-1">
+              <SectionLabel>精准翻译</SectionLabel>
+              <div className="mt-1 text-sm text-gray-800 font-medium">{item.target}</div>
+            </div>
+          )}
           {item.context && (
             <div className="mt-1">
               <SectionLabel>📌 上下文含义</SectionLabel>
               <div className="mt-1 text-sm text-indigo-700 bg-indigo-50 px-2 py-1.5 rounded">{item.context}</div>
+            </div>
+          )}
+          {item.grammar && item.grammar.length > 0 && (
+            <div className="mt-1">
+              <SectionLabel>核心句式</SectionLabel>
+              <div className="mt-1 text-sm text-gray-700">
+                {item.grammar.map((g, i) => (
+                  <div key={i}>{g.name && <span className="font-medium">{g.name}: </span>}{g.text}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          {item.vocabulary && item.vocabulary.length > 0 && (
+            <div className="mt-1">
+              <SectionLabel>重点词汇</SectionLabel>
+              <div className="mt-1 text-sm text-gray-700">
+                {item.vocabulary.map((v, i) => (
+                  <div key={i}>{v.pos && <span className="text-gray-400">({v.pos}) </span>}{v.text}</div>
+                ))}
+              </div>
             </div>
           )}
           {item.examples && item.examples.length > 0 && (

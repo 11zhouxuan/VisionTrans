@@ -212,15 +212,17 @@ pub async fn translate(
          ```\n\n\
          **格式3: 多个分别标记的内容 (type=\"multi\")**\n\
          当用户用多个矩形框/箭头分别标记了多个不同位置的文本时使用此格式。\n\
-         每个 item 可以是单词、短语或完整句子，根据各自内容选择合适的子格式：\n\
+         **重要：每个 item 的内容丰富度应与单独翻译时完全一致，不要因为是多个就省略细节。**\n\
+         每个 item 根据其内容类型提供完整信息：\n\
          - 单词 item：包含 phonetic、definitions、context、examples\n\
-         - 短语 item：包含 target（翻译）、context\n\
-         - 句子 item：包含 target（翻译）\n\
+         - 短语 item：包含 target（翻译）、context、grammar（核心句式）、vocabulary（重点词汇）\n\
+         - 句子 item：包含 target（翻译）、context\n\
          ```xml\n\
          <result>\n\
          <thinking>简短分析：推断源语言，用户分别标记了哪些内容（不超过3句话）</thinking>\n\
          <source-language>源语言名称</source-language>\n\
          <translation type=\"multi\">\n\
+         <!-- 单词 item 示例 -->\n\
          <item>\n\
          <source>第一个单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
@@ -235,10 +237,17 @@ pub async fn translate(
          </example>\n\
          </examples>\n\
          </item>\n\
+         <!-- 短语 item 示例（与单独 phrase 格式一样详细） -->\n\
          <item>\n\
-         <source>一个短语或完整句子</source>\n\
-         <target>翻译</target>\n\
+         <source>一个短语</source>\n\
+         <target>精准翻译</target>\n\
          <context>结合上下文的具体含义（一句话）</context>\n\
+         <grammar>\n\
+         <pattern name=\"句式名\">解释</pattern>\n\
+         </grammar>\n\
+         <vocabulary>\n\
+         <word pos=\"词性\">单词: 释义</word>\n\
+         </vocabulary>\n\
          </item>\n\
          </translation>\n\
          </result>\n\
