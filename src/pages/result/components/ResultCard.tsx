@@ -121,7 +121,7 @@ function parseXmlTranslation(text: string): ParsedTranslation {
           definitions: definitions.length > 0 ? definitions : undefined,
           context: el.querySelector('context')?.textContent?.trim(),
           examples: examples.length > 0 ? examples : undefined,
-          target: el.querySelector('target')?.textContent?.trim(),
+          target: el.querySelector(':scope > target')?.textContent?.trim(),
           grammar: grammar.length > 0 ? grammar : undefined,
           vocabulary: vocabulary.length > 0 ? vocabulary : undefined,
         };
