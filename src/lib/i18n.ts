@@ -53,6 +53,10 @@ const translations = {
     'proxy.address': '代理地址',
     'proxy.addressPlaceholder': 'http://127.0.0.1:7890',
 
+    // Stream Settings
+    'stream.title': '流式输出',
+    'stream.hint': '翻译结果逐字显示，无需等待完整响应',
+
     // Concurrency Settings
     'concurrency.title': '并发翻译',
     'concurrency.max': '最大并发数',
@@ -109,6 +113,10 @@ const translations = {
     'proxy.protocol': 'Protocol',
     'proxy.address': 'Proxy Address',
     'proxy.addressPlaceholder': 'http://127.0.0.1:7890',
+
+    // Stream Settings
+    'stream.title': 'Streaming Output',
+    'stream.hint': 'Display translation results progressively as they arrive',
 
     // Concurrency Settings
     'concurrency.title': 'Concurrent Translations',

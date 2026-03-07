@@ -11,6 +11,18 @@ export interface TranslateError {
   action?: 'settings' | 'retry';
 }
 
+// ===== Streaming event types =====
+export type StreamEvent =
+  | { type: 'thinking' }
+  | { type: 'rendering'; translationType: string; sourceLanguage: string; targetLanguage: string }
+  | { type: 'field-start'; field: string; attrs?: Record<string, string> }
+  | { type: 'field-delta'; field: string; text: string }
+  | { type: 'field-end'; field: string }
+  | { type: 'item-start' }
+  | { type: 'item-end' }
+  | { type: 'complete'; fullXml: string }
+  | { type: 'error'; message: string };
+
 export interface ScreenshotData {
   base64: string;
   filePath: string;

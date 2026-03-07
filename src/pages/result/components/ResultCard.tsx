@@ -6,7 +6,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
 import { RefreshCw, Copy, X, Check, Loader2, AlertCircle, Settings } from 'lucide-react';
-import type { TranslateResult, TranslateError } from '../../../types/translate';
+import type { TranslateResult, TranslateError, StreamEvent } from '../../../types/translate';
 import { saveWordToWordbook } from '../../../lib/tauri-api';
 
 const CARD_WIDTH = 400;
@@ -167,6 +167,43 @@ function parseXmlTranslation(text: string): ParsedTranslation {
   }
 }
 
+// ==================== Streaming State ====================
+
+interface StreamingState {
+  phase: 'idle' | 'thinking' | 'rendering' | 'complete';
+  translationType: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  // Accumulated field content for progressive rendering
+  fields: Record<string, string>;
+  // Track which fields are complete
+  completedFields: Set<string>;
+  // Field attributes (e.g. pos for def)
+  fieldAttrs: Record<string, Record<string, string>>;
+  // Multi-mode items
+  items: Array<{
+    fields: Record<string, string>;
+    completedFields: Set<string>;
+    fieldAttrs: Record<string, Record<string, string>>;
+    complete: boolean;
+  }>;
+  currentItemIndex: number;
+}
+
+function createInitialStreamState(): StreamingState {
+  return {
+    phase: 'idle',
+    translationType: '',
+    sourceLanguage: '',
+    targetLanguage: '',
+    fields: {},
+    completedFields: new Set(),
+    fieldAttrs: {},
+    items: [],
+    currentItemIndex: -1,
+  };
+}
+
 // ==================== Rendering ====================
 
 function SectionLabel({ children }: { children: string }) {
@@ -175,6 +212,10 @@ function SectionLabel({ children }: { children: string }) {
       {children}
     </span>
   );
+}
+
+function StreamCursor() {
+  return <span className="inline-block w-1.5 h-3.5 bg-blue-400 animate-pulse ml-0.5 align-text-bottom rounded-sm" />;
 }
 
 function WordResult({ data }: { data: ParsedTranslation }) {
@@ -390,6 +431,271 @@ function TranslationContent({ data }: { data: ParsedTranslation }) {
   }
 }
 
+// ==================== Streaming Field Renderer ====================
+
+function StreamingFieldValue({ value, isComplete }: { value: string; isComplete: boolean }) {
+  return (
+    <span>
+      {value}
+      {!isComplete && <StreamCursor />}
+    </span>
+  );
+}
+
+function StreamingContent({ stream }: { stream: StreamingState }) {
+  const { translationType, fields, completedFields, fieldAttrs, items } = stream;
+
+  if (translationType === 'multi') {
+    return (
+      <div className="space-y-4">
+        {items.map((item, idx) => (
+          <StreamingItemContent key={idx} item={item} idx={idx} />
+        ))}
+      </div>
+    );
+  }
+
+  return <StreamingFieldsContent fields={fields} completedFields={completedFields} fieldAttrs={fieldAttrs} translationType={translationType} />;
+}
+
+function StreamingFieldsContent({ fields, completedFields, fieldAttrs, translationType }: {
+  fields: Record<string, string>;
+  completedFields: Set<string>;
+  fieldAttrs: Record<string, Record<string, string>>;
+  translationType: string;
+}) {
+  const isWord = translationType === 'word';
+  const isPassage = translationType === 'passage';
+
+  return (
+    <div className="space-y-2">
+      {/* Source */}
+      {fields['source'] !== undefined && (
+        <div>
+          {isWord ? (
+            <div>
+              <span className="text-base font-bold text-gray-900">
+                <StreamingFieldValue value={fields['source']} isComplete={completedFields.has('source')} />
+              </span>
+              {fields['phonetic'] !== undefined && (
+                <span className="ml-2 text-xs text-gray-400">
+                  <StreamingFieldValue value={fields['phonetic']} isComplete={completedFields.has('phonetic')} />
+                </span>
+              )}
+            </div>
+          ) : (
+            <div>
+              <SectionLabel>{isPassage ? '原文' : '原文'}</SectionLabel>
+              <div className="mt-1 text-sm text-gray-500">
+                <StreamingFieldValue value={fields['source']} isComplete={completedFields.has('source')} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Definitions (word) */}
+      {renderDefinitions(fields, completedFields, fieldAttrs)}
+
+      {/* Target (phrase/passage) */}
+      {fields['target'] !== undefined && (
+        <div>
+          <SectionLabel>{isPassage ? '翻译' : '精准翻译'}</SectionLabel>
+          <div className={`mt-1 text-sm ${isPassage ? 'text-gray-800 leading-relaxed whitespace-pre-wrap' : 'text-gray-800 font-medium'}`}>
+            <StreamingFieldValue value={fields['target']} isComplete={completedFields.has('target')} />
+          </div>
+        </div>
+      )}
+
+      {/* Context */}
+      {fields['context'] !== undefined && (
+        <div>
+          <SectionLabel>📌 上下文含义</SectionLabel>
+          <div className="mt-1 text-sm text-indigo-700 bg-indigo-50 px-2 py-1.5 rounded">
+            <StreamingFieldValue value={fields['context']} isComplete={completedFields.has('context')} />
+          </div>
+        </div>
+      )}
+
+      {/* Grammar (phrase) */}
+      {renderGrammar(fields, completedFields, fieldAttrs)}
+
+      {/* Vocabulary (phrase) */}
+      {renderVocabulary(fields, completedFields, fieldAttrs)}
+
+      {/* Examples */}
+      {renderExamples(fields, completedFields)}
+
+      {/* Forms */}
+      {fields['forms'] !== undefined && (
+        <div>
+          <SectionLabel>📝 词形变化</SectionLabel>
+          <div className="mt-1 text-xs text-gray-500">
+            <StreamingFieldValue value={fields['forms']} isComplete={completedFields.has('forms')} />
+          </div>
+        </div>
+      )}
+
+      {/* Etymology */}
+      {fields['etymology'] !== undefined && (
+        <div>
+          <SectionLabel>🌱 词根记忆</SectionLabel>
+          <div className="mt-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1.5 rounded">
+            <StreamingFieldValue value={fields['etymology']} isComplete={completedFields.has('etymology')} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StreamingItemContent({ item, idx }: { item: StreamingState['items'][0]; idx: number }) {
+  return (
+    <div className={idx > 0 ? 'border-t border-gray-200 pt-3' : ''}>
+      <StreamingFieldsContent
+        fields={item.fields}
+        completedFields={item.completedFields}
+        fieldAttrs={item.fieldAttrs}
+        translationType={item.fields['definitions.def'] !== undefined ? 'word' : 'phrase'}
+      />
+    </div>
+  );
+}
+
+function renderDefinitions(fields: Record<string, string>, completedFields: Set<string>, fieldAttrs: Record<string, Record<string, string>>) {
+  // Collect all definitions.def entries
+  const defKeys = Object.keys(fields).filter(k => k === 'definitions.def' || k.startsWith('definitions.def#'));
+  if (defKeys.length === 0 && !fields['definitions']) return null;
+
+  // If we have the container but no children yet, show label only
+  if (defKeys.length === 0) {
+    return (
+      <div>
+        <SectionLabel>释义</SectionLabel>
+        <div className="mt-1 text-sm text-gray-700"><StreamCursor /></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionLabel>释义</SectionLabel>
+      <div className="mt-1 text-sm text-gray-700">
+        {defKeys.map((key, i) => {
+          const pos = fieldAttrs[key]?.pos || '';
+          const isComplete = completedFields.has(key);
+          return (
+            <div key={i}>
+              {pos && <span className="text-gray-500">{pos}. </span>}
+              <StreamingFieldValue value={fields[key]} isComplete={isComplete} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function renderExamples(fields: Record<string, string>, completedFields: Set<string>) {
+  const enKeys = Object.keys(fields).filter(k => k === 'examples.example.en' || k.startsWith('examples.example.en#'));
+  const targetKeys = Object.keys(fields).filter(k => k === 'examples.example.target' || k.startsWith('examples.example.target#'));
+  if (enKeys.length === 0 && targetKeys.length === 0 && !fields['examples']) return null;
+
+  if (enKeys.length === 0 && targetKeys.length === 0) {
+    return (
+      <div>
+        <SectionLabel>例句</SectionLabel>
+        <div className="mt-1 text-sm text-gray-500"><StreamCursor /></div>
+      </div>
+    );
+  }
+
+  const count = Math.max(enKeys.length, targetKeys.length);
+  return (
+    <div>
+      <SectionLabel>例句</SectionLabel>
+      <div className="mt-1 text-sm text-gray-500">
+        {Array.from({ length: count }, (_, i) => {
+          const enKey = enKeys[i];
+          const targetKey = targetKeys[i];
+          return (
+            <div key={i} className="mb-1">
+              {enKey && fields[enKey] !== undefined && (
+                <div>• EN: <StreamingFieldValue value={fields[enKey]} isComplete={completedFields.has(enKey)} /></div>
+              )}
+              {targetKey && fields[targetKey] !== undefined && (
+                <div>• <StreamingFieldValue value={fields[targetKey]} isComplete={completedFields.has(targetKey)} /></div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function renderGrammar(fields: Record<string, string>, completedFields: Set<string>, fieldAttrs: Record<string, Record<string, string>>) {
+  const patternKeys = Object.keys(fields).filter(k => k === 'grammar.pattern' || k.startsWith('grammar.pattern#'));
+  if (patternKeys.length === 0 && !fields['grammar']) return null;
+
+  if (patternKeys.length === 0) {
+    return (
+      <div>
+        <SectionLabel>核心句式</SectionLabel>
+        <div className="mt-1 text-sm text-gray-700"><StreamCursor /></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionLabel>核心句式</SectionLabel>
+      <div className="mt-1 text-sm text-gray-700">
+        {patternKeys.map((key, i) => {
+          const name = fieldAttrs[key]?.name || '';
+          return (
+            <div key={i}>
+              {name && <span className="font-medium">{name}: </span>}
+              <StreamingFieldValue value={fields[key]} isComplete={completedFields.has(key)} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function renderVocabulary(fields: Record<string, string>, completedFields: Set<string>, fieldAttrs: Record<string, Record<string, string>>) {
+  const wordKeys = Object.keys(fields).filter(k => k === 'vocabulary.word' || k.startsWith('vocabulary.word#'));
+  if (wordKeys.length === 0 && !fields['vocabulary']) return null;
+
+  if (wordKeys.length === 0) {
+    return (
+      <div>
+        <SectionLabel>重点词汇</SectionLabel>
+        <div className="mt-1 text-sm text-gray-700"><StreamCursor /></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionLabel>重点词汇</SectionLabel>
+      <div className="mt-1 text-sm text-gray-700">
+        {wordKeys.map((key, i) => {
+          const pos = fieldAttrs[key]?.pos || '';
+          return (
+            <div key={i}>
+              {pos && <span className="text-gray-400">({pos}) </span>}
+              <StreamingFieldValue value={fields[key]} isComplete={completedFields.has(key)} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ==================== Main Component ====================
 
 export default function ResultCard() {
@@ -397,7 +703,12 @@ export default function ResultCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<TranslateError | null>(null);
   const [copied, setCopied] = useState(false);
+  const [streaming, setStreaming] = useState<StreamingState>(createInitialStreamState);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Track container child counts for unique keys
+  const childCountsRef = useRef<Record<string, number>>({});
+
+  const isStreaming = streaming.phase === 'thinking' || streaming.phase === 'rendering';
 
   const parsed = useMemo<ParsedTranslation | null>(() => {
     if (!result?.translation) return null;
@@ -417,6 +728,143 @@ export default function ResultCard() {
     }
   }, []);
 
+  // Helper to get target fields/completedFields/fieldAttrs for current context (item or top-level)
+  const getStreamTarget = useCallback((s: StreamingState) => {
+    if (s.translationType === 'multi' && s.currentItemIndex >= 0 && s.items[s.currentItemIndex]) {
+      return s.items[s.currentItemIndex];
+    }
+    return { fields: s.fields, completedFields: s.completedFields, fieldAttrs: s.fieldAttrs };
+  }, []);
+
+  // Handle streaming events
+  const handleStreamEvent = useCallback((event: StreamEvent) => {
+    setStreaming(prev => {
+      const next = { ...prev };
+
+      switch (event.type) {
+        case 'thinking':
+          next.phase = 'thinking';
+          setLoading(false);
+          break;
+
+        case 'rendering':
+          next.phase = 'rendering';
+          next.translationType = event.translationType;
+          next.sourceLanguage = event.sourceLanguage;
+          next.targetLanguage = event.targetLanguage;
+          // Reset child counts for new rendering
+          childCountsRef.current = {};
+          break;
+
+        case 'item-start': {
+          const newItem = {
+            fields: {} as Record<string, string>,
+            completedFields: new Set<string>(),
+            fieldAttrs: {} as Record<string, Record<string, string>>,
+            complete: false,
+          };
+          next.items = [...prev.items, newItem];
+          next.currentItemIndex = next.items.length - 1;
+          // Reset child counts for new item
+          childCountsRef.current = {};
+          break;
+        }
+
+        case 'item-end': {
+          if (next.currentItemIndex >= 0 && next.items[next.currentItemIndex]) {
+            const items = [...next.items];
+            items[next.currentItemIndex] = { ...items[next.currentItemIndex], complete: true };
+            next.items = items;
+          }
+          next.currentItemIndex = -1;
+          break;
+        }
+
+        case 'field-start': {
+          const field = event.field;
+          const target = getStreamTarget(next);
+
+          // For container children (e.g. definitions.def), use counter for unique keys
+          if (field.includes('.')) {
+            const count = (childCountsRef.current[field] || 0);
+            const key = count === 0 ? field : `${field}#${count}`;
+            childCountsRef.current[field] = count + 1;
+            target.fields[key] = '';
+            if (event.attrs) {
+              target.fieldAttrs[key] = event.attrs as Record<string, string>;
+            }
+          } else {
+            // Simple field or container
+            if (target.fields[field] === undefined) {
+              target.fields[field] = '';
+            }
+            if (event.attrs) {
+              target.fieldAttrs[field] = event.attrs as Record<string, string>;
+            }
+          }
+
+          // Force items array update for multi mode
+          if (next.translationType === 'multi' && next.currentItemIndex >= 0) {
+            next.items = [...next.items];
+          }
+          break;
+        }
+
+        case 'field-delta': {
+          const field = event.field;
+          const target = getStreamTarget(next);
+
+          if (field.includes('.')) {
+            // Find the latest key for this compound field
+            const count = (childCountsRef.current[field] || 1) - 1;
+            const key = count === 0 ? field : `${field}#${count}`;
+            if (target.fields[key] !== undefined) {
+              target.fields[key] += event.text;
+            }
+          } else {
+            if (target.fields[field] !== undefined) {
+              target.fields[field] += event.text;
+            }
+          }
+
+          if (next.translationType === 'multi' && next.currentItemIndex >= 0) {
+            next.items = [...next.items];
+          }
+          break;
+        }
+
+        case 'field-end': {
+          const field = event.field;
+          const target = getStreamTarget(next);
+
+          if (field.includes('.')) {
+            const count = (childCountsRef.current[field] || 1) - 1;
+            const key = count === 0 ? field : `${field}#${count}`;
+            target.completedFields.add(key);
+          } else {
+            target.completedFields.add(field);
+          }
+
+          if (next.translationType === 'multi' && next.currentItemIndex >= 0) {
+            next.items = [...next.items];
+          }
+          break;
+        }
+
+        case 'complete':
+          next.phase = 'complete';
+          break;
+
+        case 'error':
+          setError({ code: 'STREAM_ERROR', message: event.message, action: 'retry' });
+          next.phase = 'idle';
+          break;
+      }
+
+      return next;
+    });
+  }, [getStreamTarget]);
+
   useEffect(() => {
     const setupListeners = async () => {
       const unlistenResult = await listen<TranslateResult>('translation-result', (event) => {
@@ -424,19 +872,25 @@ export default function ResultCard() {
         setResult(event.payload);
         setLoading(false);
         setError(null);
+        // When result arrives after streaming, switch to parsed view
+        setStreaming(prev => ({ ...prev, phase: 'complete' }));
       });
       const unlistenError = await listen<TranslateError>('translation-error', (event) => {
         setError(event.payload);
         setLoading(false);
+        setStreaming(createInitialStreamState());
       });
-      return () => { unlistenResult(); unlistenError(); };
+      const unlistenStream = await listen<StreamEvent>('translation-stream', (event) => {
+        handleStreamEvent(event.payload);
+      });
+      return () => { unlistenResult(); unlistenError(); unlistenStream(); };
     };
     const cleanup = setupListeners();
     return () => { cleanup.then(fn => fn()); };
-  }, []);
+  }, [handleStreamEvent]);
 
   // Resize window when content changes
-  useEffect(() => { resizeWindowToFit(); }, [loading, result, error, resizeWindowToFit]);
+  useEffect(() => { resizeWindowToFit(); }, [loading, result, error, streaming, resizeWindowToFit]);
 
   // Auto-save to wordbook when result arrives (all types including passage)
   useEffect(() => {
@@ -444,7 +898,6 @@ export default function ResultCard() {
       if (parsed.type === 'multi' && parsed.items?.length) {
         // Save each item separately with correct type detection
         parsed.items.forEach((item) => {
-          // Determine type: has definitions → word, has target/grammar → phrase
           const itemType = item.definitions && item.definitions.length > 0 ? 'word' : 'phrase';
           console.log('[wordbook] Auto-saving multi item:', item.source, 'type:', itemType);
           saveWordToWordbook(item.source, result.translation, itemType, result.sourceLanguage, result.targetLanguage, result.imageBase64)
@@ -474,6 +927,9 @@ export default function ResultCard() {
   const handleRetry = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setResult(null);
+    setStreaming(createInitialStreamState());
+    childCountsRef.current = {};
     try { await invoke('retry_translation'); }
     catch (err) { console.error('Failed to retry:', err); }
   }, []);
@@ -506,6 +962,26 @@ export default function ResultCard() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleClose]);
 
+  // Determine header text
+  const headerText = (() => {
+    if (streaming.phase === 'rendering' || streaming.phase === 'complete') {
+      return `${streaming.sourceLanguage || '...'} → ${streaming.targetLanguage || '...'}`;
+    }
+    if (result) {
+      return `${result.sourceLanguage} → ${result.targetLanguage}`;
+    }
+    return '翻译中...';
+  })();
+
+  const typeBadge = (() => {
+    const t = streaming.phase === 'rendering' ? streaming.translationType : parsed?.type;
+    if (t === 'word') return <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">Word</span>;
+    if (t === 'phrase') return <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">Phrase</span>;
+    if (t === 'multi') return <span className="text-[9px] px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded font-medium">Multi</span>;
+    if (t === 'passage') return <span className="text-[9px] px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded font-medium">Passage</span>;
+    return null;
+  })();
+
   return (
     <motion.div
       ref={cardRef}
@@ -520,17 +996,8 @@ export default function ResultCard() {
         data-tauri-drag-region
       >
         <div className="flex items-center gap-2 pointer-events-none">
-          <span className="text-xs text-gray-400">
-            {result ? `${result.sourceLanguage} → ${result.targetLanguage}` : '翻译中...'}
-          </span>
-          {parsed && (() => {
-            const t = parsed.type;
-            if (t === 'word') return <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">Word</span>;
-            if (t === 'phrase') return <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">Phrase</span>;
-            if (t === 'multi') return <span className="text-[9px] px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded font-medium">Multi</span>;
-            if (t === 'passage') return <span className="text-[9px] px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded font-medium">Passage</span>;
-            return null;
-          })()}
+          <span className="text-xs text-gray-400">{headerText}</span>
+          {typeBadge}
         </div>
         <button
           onClick={handleClose}
@@ -561,6 +1028,13 @@ export default function ResultCard() {
               </button>
             )}
           </div>
+        ) : streaming.phase === 'thinking' ? (
+          <div className="flex items-center gap-2 text-gray-400 py-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">正在思考...</span>
+          </div>
+        ) : isStreaming ? (
+          <StreamingContent stream={streaming} />
         ) : parsed ? (
           <TranslationContent data={parsed} />
         ) : (
@@ -574,12 +1048,12 @@ export default function ResultCard() {
       <div className="flex justify-end gap-1 px-3 pb-2 pt-1">
         <button onClick={handleRetry}
           className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded hover:bg-gray-100"
-          title="重新翻译" disabled={loading}>
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          title="重新翻译" disabled={loading || isStreaming}>
+          <RefreshCw className={`w-3.5 h-3.5 ${loading || isStreaming ? 'animate-spin' : ''}`} />
         </button>
         <button onClick={handleCopy}
           className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded hover:bg-gray-100"
-          title="复制" disabled={loading || !!error}>
+          title="复制" disabled={loading || isStreaming || !!error}>
           {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>

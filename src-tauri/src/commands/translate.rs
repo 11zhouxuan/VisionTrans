@@ -72,54 +72,78 @@ pub async fn start_translation(
         return Ok(());
     }
 
-    // Call LLM API in background
+    // Call LLM API in background - dispatch stream vs non-stream
     let app_handle = app.clone();
     let win_id = window_id.clone();
+    let use_stream = config.enable_stream;
     tauri::async_runtime::spawn(async move {
-        let result = llm_client::translate(&config, &image_base64).await;
+        if use_stream {
+            // Streaming mode: events are emitted progressively via translation-stream
+            let stream_result = llm_client::translate_stream(&config, &image_base64, &app_handle, &win_id).await;
 
-        // Release the concurrency slot as soon as translation completes (success or error)
-        // The result window stays open for the user to read, but the slot is freed
-        {
-            let state = app_handle.state::<AppState>();
-            state.release_result_window(&win_id);
-            eprintln!("[translate] Translation done, released concurrency slot: {} (active: {})", &win_id, state.active_count());
-        }
-
-        match result {
-            Ok(mut result) => {
-                eprintln!("[llm] Translation result for {}:\n{}", &win_id, &result.translation);
-                // Check if saveScreenshot is enabled, attach image to result
-                let save_screenshot = app_handle.store("config.json")
-                    .ok()
-                    .and_then(|s| s.get("saveScreenshot"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                if save_screenshot {
-                    result.image_base64 = Some(image_base64.clone());
-                }
-                let _ = app_handle.emit_to(win_id.as_str(), "translation-result", result);
+            // Release the concurrency slot
+            {
+                let state = app_handle.state::<AppState>();
+                state.release_result_window(&win_id);
+                eprintln!("[translate] Stream done, released concurrency slot: {} (active: {})", &win_id, state.active_count());
             }
-            Err(err) => {
-                let (code, action) = match &err {
-                    AppError::ApiKeyNotConfigured => {
-                        ("API_KEY_NOT_CONFIGURED", Some("settings"))
+
+            match stream_result {
+                Ok(full_xml) => {
+                    eprintln!("[llm] Stream translation complete for {}:\n{}", &win_id, &full_xml);
+                    // The complete event was already emitted by translate_stream.
+                    // Now emit translation-result for wordbook save compatibility
+                    let source_language = llm_client::extract_source_language_pub(&full_xml)
+                        .unwrap_or_else(|| "AUTO".to_string());
+                    let target_lang_name = match config.target_language.as_str() {
+                        "zh" => "简体中文",
+                        "en" => "English",
+                        _ => "简体中文",
+                    };
+                    let save_screenshot = app_handle.store("config.json")
+                        .ok()
+                        .and_then(|s| s.get("saveScreenshot"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    let result = llm_client::TranslateResult {
+                        translation: full_xml,
+                        source_language,
+                        target_language: target_lang_name.to_string(),
+                        image_base64: if save_screenshot { Some(image_base64.clone()) } else { None },
+                    };
+                    let _ = app_handle.emit_to(win_id.as_str(), "translation-result", result);
+                }
+                Err(err) => {
+                    emit_translation_error(&app_handle, &win_id, &err);
+                }
+            }
+        } else {
+            // Non-streaming mode: wait for complete result
+            let result = llm_client::translate(&config, &image_base64).await;
+
+            // Release the concurrency slot
+            {
+                let state = app_handle.state::<AppState>();
+                state.release_result_window(&win_id);
+                eprintln!("[translate] Translation done, released concurrency slot: {} (active: {})", &win_id, state.active_count());
+            }
+
+            match result {
+                Ok(mut result) => {
+                    eprintln!("[llm] Translation result for {}:\n{}", &win_id, &result.translation);
+                    let save_screenshot = app_handle.store("config.json")
+                        .ok()
+                        .and_then(|s| s.get("saveScreenshot"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    if save_screenshot {
+                        result.image_base64 = Some(image_base64.clone());
                     }
-                    AppError::ApiAuthError => ("API_AUTH_ERROR", Some("settings")),
-                    AppError::NetworkTimeout => ("NETWORK_TIMEOUT", Some("retry")),
-                    AppError::NetworkUnavailable => ("NETWORK_UNAVAILABLE", Some("retry")),
-                    AppError::RateLimitExceeded => ("RATE_LIMIT", Some("retry")),
-                    _ => ("UNKNOWN", Some("retry")),
-                };
-                let _ = app_handle.emit_to(
-                    win_id.as_str(),
-                    "translation-error",
-                    serde_json::json!({
-                        "code": code,
-                        "message": err.to_string(),
-                        "action": action
-                    }),
-                );
+                    let _ = app_handle.emit_to(win_id.as_str(), "translation-result", result);
+                }
+                Err(err) => {
+                    emit_translation_error(&app_handle, &win_id, &err);
+                }
             }
         }
     });
@@ -235,6 +259,11 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
         Some(ProxyConfig { protocol, url })
     });
 
+    let enable_stream = store
+        .get("enableStream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
     Ok(LLMConfig {
         provider,
         api_key,
@@ -245,7 +274,28 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
         bedrock_region,
         target_language,
         proxy,
+        enable_stream,
     })
+}
+
+fn emit_translation_error(app: &AppHandle, window_id: &str, err: &AppError) {
+    let (code, action) = match err {
+        AppError::ApiKeyNotConfigured => ("API_KEY_NOT_CONFIGURED", Some("settings")),
+        AppError::ApiAuthError => ("API_AUTH_ERROR", Some("settings")),
+        AppError::NetworkTimeout => ("NETWORK_TIMEOUT", Some("retry")),
+        AppError::NetworkUnavailable => ("NETWORK_UNAVAILABLE", Some("retry")),
+        AppError::RateLimitExceeded => ("RATE_LIMIT", Some("retry")),
+        _ => ("UNKNOWN", Some("retry")),
+    };
+    let _ = app.emit_to(
+        window_id,
+        "translation-error",
+        serde_json::json!({
+            "code": code,
+            "message": err.to_string(),
+            "action": action
+        }),
+    );
 }
 
 fn create_result_window(app: &AppHandle, window_id: &str, slot_index: usize) -> Result<(), AppError> {

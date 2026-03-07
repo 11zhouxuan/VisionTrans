@@ -32,6 +32,7 @@ export default function SettingsPage() {
         const wordbookPath = await store.get<string>('wordbookPath') ?? DEFAULT_CONFIG.wordbookPath;
         const saveScreenshot = await store.get<boolean>('saveScreenshot') ?? DEFAULT_CONFIG.saveScreenshot;
         const maxConcurrency = await store.get<number>('maxConcurrency') ?? DEFAULT_CONFIG.maxConcurrency;
+        const enableStream = await store.get<boolean>('enableStream') ?? DEFAULT_CONFIG.enableStream;
         const onboardingCompleted = await store.get<boolean>('onboardingCompleted') ?? DEFAULT_CONFIG.onboardingCompleted;
 
         // If wordbookPath is empty, get the default from backend
@@ -50,6 +51,7 @@ export default function SettingsPage() {
           wordbookPath: resolvedWordbookPath,
           saveScreenshot,
           maxConcurrency,
+          enableStream,
           onboardingCompleted,
         });
       } catch (err) {
@@ -76,6 +78,7 @@ export default function SettingsPage() {
       await store.set('wordbookPath', newConfig.wordbookPath);
       await store.set('saveScreenshot', newConfig.saveScreenshot);
       await store.set('maxConcurrency', newConfig.maxConcurrency);
+      await store.set('enableStream', newConfig.enableStream);
       await store.set('onboardingCompleted', newConfig.onboardingCompleted);
       await store.save();
       setSaved(true);
@@ -141,8 +144,21 @@ export default function SettingsPage() {
           <ProxySettings proxy={config.proxy} onProxyChange={(v) => updateConfig({ proxy: v })} />
         </div>
 
-        {/* Concurrency Settings */}
+        {/* Streaming & Concurrency Settings */}
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">{t('stream.title')}</h3>
+              <p className="text-xs text-gray-400 mt-0.5">{t('stream.hint')}</p>
+            </div>
+            <button
+              onClick={() => updateConfig({ enableStream: !config.enableStream })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${config.enableStream ? 'bg-blue-500' : 'bg-gray-300'}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${config.enableStream ? 'left-5' : 'left-0.5'}`} />
+            </button>
+          </div>
+          <div className="border-t border-gray-100 pt-3">
           <h3 className="text-sm font-semibold text-gray-700">{t('concurrency.title')}</h3>
           <div className="flex items-center gap-3">
             <label className="text-sm text-gray-600">{t('concurrency.max')}</label>
@@ -157,6 +173,7 @@ export default function SettingsPage() {
             </select>
           </div>
           <p className="text-xs text-gray-400">{t('concurrency.hint')}</p>
+          </div>
         </div>
 
         {/* Wordbook Path */}

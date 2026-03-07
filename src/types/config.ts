@@ -20,6 +20,7 @@ export interface AppConfig {
   wordbookPath: string;
   saveScreenshot: boolean;
   maxConcurrency: number;
+  enableStream: boolean;
   onboardingCompleted: boolean;
 }
 
@@ -43,5 +44,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   wordbookPath: '',
   saveScreenshot: true,
   maxConcurrency: 1,
+  enableStream: true,
   onboardingCompleted: false,
 };
