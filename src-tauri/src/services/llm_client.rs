@@ -181,14 +181,12 @@ pub async fn translate(
          <translation type=\"word\">\n\
          <source>原始单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
-         <forms>词形变化，如：复数 campaigns | 第三人称单数 campaigns | 现在分词 campaigning | 过去式 campaigned | 过去分词 campaigned</forms>\n\
          <definitions>\n\
          <!-- 列出所有常见词性的释义，不要遗漏 -->\n\
          <def pos=\"n\">名词释义1；释义2</def>\n\
          <def pos=\"v\">动词释义1；释义2</def>\n\
          <def pos=\"adj\">形容词释义（如有）</def>\n\
          </definitions>\n\
-         <etymology>词根词缀拆解，帮助记忆。如：camp(田野/战场) + -aign(法语后缀) → 原指在战场上的军事行动</etymology>\n\
          <context>结合上下文的具体含义（一句话）</context>\n\
          <examples>\n\
          <example>\n\
@@ -196,6 +194,8 @@ pub async fn translate(
          <target>{target_lang}例句</target>\n\
          </example>\n\
          </examples>\n\
+         <forms>词形变化，如：复数 campaigns | 第三人称单数 campaigns | 现在分词 campaigning | 过去式 campaigned | 过去分词 campaigned</forms>\n\
+         <etymology>词根词缀拆解，帮助记忆。如：camp(田野/战场) + -aign(法语后缀) → 原指在战场上的军事行动</etymology>\n\
          </translation>\n\
          </result>\n\
          ```\n\n\
@@ -229,15 +229,13 @@ pub async fn translate(
          <thinking>简短分析：推断源语言，用户分别标记了哪些内容（不超过3句话）</thinking>\n\
          <source-language>源语言名称</source-language>\n\
          <translation type=\"multi\">\n\
-         <!-- 单词 item 示例（与单独 word 格式一样详细） -->\n\
+         <!-- 单词 item 示例（与单独 word 格式一样详细，字段顺序与显示顺序一致） -->\n\
          <item>\n\
          <source>第一个单词</source>\n\
          <phonetic>英 [IPA] | 美 [IPA]</phonetic>\n\
-         <forms>词形变化</forms>\n\
          <definitions>\n\
          <def pos=\"词性\">释义</def>\n\
          </definitions>\n\
-         <etymology>词根词缀拆解</etymology>\n\
          <context>结合上下文的具体含义（一句话）</context>\n\
          <examples>\n\
          <example>\n\
@@ -245,6 +243,8 @@ pub async fn translate(
          <target>{target_lang}例句</target>\n\
          </example>\n\
          </examples>\n\
+         <forms>词形变化</forms>\n\
+         <etymology>词根词缀拆解</etymology>\n\
          </item>\n\
          <!-- 短语 item 示例（与单独 phrase 格式一样详细） -->\n\
          <item>\n\
