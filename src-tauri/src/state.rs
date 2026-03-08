@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 /// Application runtime global state, injected via Tauri's State mechanism
@@ -16,6 +16,15 @@ pub struct AppState {
     pub active_result_windows: Mutex<HashSet<String>>,
     /// Counter for generating unique result window IDs
     pub result_window_counter: Mutex<u32>,
+    /// Pending translation requests waiting for window ready signal
+    pub pending_translations: Mutex<HashMap<String, PendingTranslation>>,
+}
+
+/// A translation request waiting for the result window to signal readiness
+#[derive(Clone)]
+pub struct PendingTranslation {
+    pub image_base64: String,
+    pub config: crate::services::llm_client::LLMConfig,
 }
 
 impl AppState {
@@ -27,6 +36,7 @@ impl AppState {
             last_translation_request: Mutex::new(None),
             active_result_windows: Mutex::new(HashSet::new()),
             result_window_counter: Mutex::new(0),
+            pending_translations: Mutex::new(HashMap::new()),
         }
     }
 

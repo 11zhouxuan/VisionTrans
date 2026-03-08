@@ -28,6 +28,7 @@ pub fn run() {
             commands::capture::get_screenshot,
             commands::capture::trigger_capture_command,
             commands::translate::start_translation,
+            commands::translate::signal_result_ready,
             commands::translate::retry_translation,
             commands::translate::test_api_connection,
             commands::translate::release_result_slot,

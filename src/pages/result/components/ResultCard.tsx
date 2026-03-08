@@ -883,6 +883,17 @@ export default function ResultCard() {
       const unlistenStream = await listen<StreamEvent>('translation-stream', (event) => {
         handleStreamEvent(event.payload);
       });
+
+      // Signal to backend that this window is ready to receive events.
+      // This triggers the actual translation (stream or non-stream).
+      const label = getCurrentWindow().label;
+      console.log('[result] Window ready, signaling backend:', label);
+      try {
+        await invoke('signal_result_ready', { windowId: label });
+      } catch (err) {
+        console.error('[result] Failed to signal ready:', err);
+      }
+
       return () => { unlistenResult(); unlistenError(); unlistenStream(); };
     };
     const cleanup = setupListeners();

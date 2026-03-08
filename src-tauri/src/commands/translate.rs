@@ -3,7 +3,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::errors::AppError;
 use crate::services::llm_client::{self, LLMConfig, ProxyConfig};
-use crate::state::{AppState, Position, TranslationRequest};
+use crate::state::{AppState, PendingTranslation, Position, TranslationRequest};
 
 /// Read max concurrency from config (default 1)
 fn get_max_concurrency(app: &AppHandle) -> usize {
@@ -72,10 +72,43 @@ pub async fn start_translation(
         return Ok(());
     }
 
-    // Call LLM API in background - dispatch stream vs non-stream
+    // Store the pending translation - it will be started when the window signals ready
+    state.pending_translations.lock().unwrap().insert(
+        window_id.clone(),
+        PendingTranslation {
+            image_base64,
+            config,
+        },
+    );
+    eprintln!("[translate] Stored pending translation for {}, waiting for window ready signal", &window_id);
+
+    Ok(())
+}
+
+/// Called by the result window frontend when it has mounted and is ready to receive events.
+/// This triggers the actual translation (stream or non-stream).
+#[tauri::command]
+pub async fn signal_result_ready(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    window_id: String,
+) -> Result<(), AppError> {
+    // Take the pending translation for this window
+    let pending = state.pending_translations.lock().unwrap().remove(&window_id);
+
+    let Some(pending) = pending else {
+        eprintln!("[translate] No pending translation for {} (may have been handled already)", &window_id);
+        return Ok(());
+    };
+
+    eprintln!("[translate] Window {} ready, starting translation (stream={})", &window_id, pending.config.enable_stream);
+
     let app_handle = app.clone();
     let win_id = window_id.clone();
+    let config = pending.config;
+    let image_base64 = pending.image_base64;
     let use_stream = config.enable_stream;
+
     tauri::async_runtime::spawn(async move {
         if use_stream {
             // Streaming mode: events are emitted progressively via translation-stream
@@ -91,8 +124,6 @@ pub async fn start_translation(
             match stream_result {
                 Ok(full_xml) => {
                     eprintln!("[llm] Stream translation complete for {}:\n{}", &win_id, &full_xml);
-                    // The complete event was already emitted by translate_stream.
-                    // Now emit translation-result for wordbook save compatibility
                     let source_language = llm_client::extract_source_language_pub(&full_xml)
                         .unwrap_or_else(|| "AUTO".to_string());
                     let target_lang_name = match config.target_language.as_str() {
