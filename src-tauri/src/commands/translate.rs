@@ -96,9 +96,12 @@ pub async fn signal_result_ready(
     // Take the pending translation for this window
     let pending = state.pending_translations.lock().unwrap().remove(&window_id);
 
-    let Some(pending) = pending else {
-        eprintln!("[translate] No pending translation for {} (may have been handled already)", &window_id);
-        return Ok(());
+    let pending = match pending {
+        Some(p) => p,
+        None => {
+            eprintln!("[translate] No pending translation for {} (may have been handled already)", &window_id);
+            return Ok(());
+        }
     };
 
     eprintln!("[translate] Window {} ready, starting translation (stream={})", &window_id, pending.config.enable_stream);

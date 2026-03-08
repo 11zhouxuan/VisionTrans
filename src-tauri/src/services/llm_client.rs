@@ -533,6 +533,7 @@ impl StreamEmitter {
         self.emit("complete", serde_json::json!({"type": "complete", "fullXml": full_xml}));
     }
 
+    #[allow(dead_code)]
     fn error(&self, message: &str) {
         self.emit("error", serde_json::json!({"type": "error", "message": message}));
     }
