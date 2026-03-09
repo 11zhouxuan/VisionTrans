@@ -624,23 +624,30 @@ impl XmlStreamProcessor {
                     }
                 }
                 XmlStreamState::InTranslation => {
-                    // Look for field open tags, <item>, or </translation>
-                    if let Some(pos) = self.buffer.find("</translation>") {
-                        self.buffer = self.buffer[pos + "</translation>".len()..].to_string();
-                        self.state = XmlStreamState::Done;
-                    } else if self.translation_type == "multi" {
+                    // Try to open fields FIRST, then check for closing tag.
+                    // This ensures fields are processed even when the entire
+                    // XML is already in the buffer.
+                    if self.translation_type == "multi" {
                         if let Some(pos) = self.buffer.find("<item>") {
                             self.buffer = self.buffer[pos + "<item>".len()..].to_string();
                             self.state = XmlStreamState::InItem;
                             self.emitter.item_start();
+                        } else if self.buffer.contains("</translation>") {
+                            if let Some(pos) = self.buffer.find("</translation>") {
+                                self.buffer = self.buffer[pos + "</translation>".len()..].to_string();
+                                self.state = XmlStreamState::Done;
+                            }
                         } else {
                             break;
                         }
+                    } else if self.try_open_field(false) {
+                        // Successfully opened a field, continue loop
+                    } else if let Some(pos) = self.buffer.find("</translation>") {
+                        // No more fields to open, check for closing tag
+                        self.buffer = self.buffer[pos + "</translation>".len()..].to_string();
+                        self.state = XmlStreamState::Done;
                     } else {
-                        // Try to find any opening tag for a field
-                        if !self.try_open_field(false) {
-                            break;
-                        }
+                        break;
                     }
                 }
                 XmlStreamState::InField(ref field) => {
@@ -715,11 +722,14 @@ impl XmlStreamProcessor {
                     }
                 }
                 XmlStreamState::InItem => {
-                    if let Some(pos) = self.buffer.find("</item>") {
+                    // Try to open fields FIRST, then check for </item>
+                    if self.try_open_field(true) {
+                        // Successfully opened a field, continue loop
+                    } else if let Some(pos) = self.buffer.find("</item>") {
                         self.buffer = self.buffer[pos + "</item>".len()..].to_string();
                         self.emitter.item_end();
                         self.state = XmlStreamState::InTranslation;
-                    } else if !self.try_open_field(true) {
+                    } else {
                         break;
                     }
                 }
