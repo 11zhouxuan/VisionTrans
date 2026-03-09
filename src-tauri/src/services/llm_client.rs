@@ -576,7 +576,14 @@ impl XmlStreamProcessor {
 
     fn process_buffer(&mut self) {
         // Process the buffer looking for complete tags and text content
+        let mut iterations = 0;
         loop {
+            iterations += 1;
+            if iterations > 500 {
+                eprintln!("[xml-sm] Too many iterations, breaking. State: {:?}, buffer len: {}", self.state, self.buffer.len());
+                break;
+            }
+            eprintln!("[xml-sm] State: {:?}, buffer[..80]: {:?}", self.state, &self.buffer[..self.buffer.len().min(80)]);
             match self.state.clone() {
                 XmlStreamState::Init => {
                     // Look for <thinking> or <result>
