@@ -626,8 +626,10 @@ impl XmlStreamProcessor {
                     if let Some(pos) = self.buffer.find("</source-language>") {
                         self.source_language = self.buffer[..pos].trim().to_string();
                         self.buffer = self.buffer[pos + "</source-language>".len()..].to_string();
-                        // Now look for <translation>
-                        self.try_enter_translation();
+                        // Transition to AfterThinking which will look for <translation>
+                        // Don't call try_enter_translation() directly because the closing >
+                        // might not have arrived yet in the buffer
+                        self.state = XmlStreamState::AfterThinking;
                     } else {
                         break;
                     }
