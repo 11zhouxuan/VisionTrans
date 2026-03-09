@@ -728,26 +728,34 @@ export default function ResultCard() {
     }
   }, []);
 
-  // Helper to get target fields/completedFields/fieldAttrs for current context (item or top-level)
-  const getStreamTarget = useCallback((s: StreamingState) => {
-    if (s.translationType === 'multi' && s.currentItemIndex >= 0 && s.items[s.currentItemIndex]) {
-      return s.items[s.currentItemIndex];
-    }
-    return { fields: s.fields, completedFields: s.completedFields, fieldAttrs: s.fieldAttrs };
-  }, []);
-
   // Handle streaming events
   const handleStreamEvent = useCallback((event: StreamEvent) => {
+    console.log('[stream-event]', event.type, event.type === 'field-delta' ? `field=${(event as { field: string }).field}` : JSON.stringify(event));
+
     setStreaming(prev => {
-      const next = { ...prev };
+      // Deep copy mutable parts to ensure React detects changes
+      const next: StreamingState = {
+        ...prev,
+        fields: { ...prev.fields },
+        completedFields: new Set(prev.completedFields),
+        fieldAttrs: { ...prev.fieldAttrs },
+        items: prev.items.map(item => ({
+          ...item,
+          fields: { ...item.fields },
+          completedFields: new Set(item.completedFields),
+          fieldAttrs: { ...item.fieldAttrs },
+        })),
+      };
 
       switch (event.type) {
         case 'thinking':
+          console.log('[stream] → phase: thinking');
           next.phase = 'thinking';
           setLoading(false);
           break;
 
         case 'rendering':
+          console.log('[stream] → phase: rendering, type:', event.translationType);
           next.phase = 'rendering';
           next.translationType = event.translationType;
           next.sourceLanguage = event.sourceLanguage;
@@ -757,13 +765,14 @@ export default function ResultCard() {
           break;
 
         case 'item-start': {
+          console.log('[stream] → item-start, index:', next.items.length);
           const newItem = {
             fields: {} as Record<string, string>,
             completedFields: new Set<string>(),
             fieldAttrs: {} as Record<string, Record<string, string>>,
             complete: false,
           };
-          next.items = [...prev.items, newItem];
+          next.items = [...next.items, newItem];
           next.currentItemIndex = next.items.length - 1;
           // Reset child counts for new item
           childCountsRef.current = {};
@@ -771,10 +780,10 @@ export default function ResultCard() {
         }
 
         case 'item-end': {
+          console.log('[stream] → item-end, index:', next.currentItemIndex);
           if (next.currentItemIndex >= 0 && next.items[next.currentItemIndex]) {
-            const items = [...next.items];
-            items[next.currentItemIndex] = { ...items[next.currentItemIndex], complete: true };
-            next.items = items;
+            next.items = [...next.items];
+            next.items[next.currentItemIndex] = { ...next.items[next.currentItemIndex], complete: true };
           }
           next.currentItemIndex = -1;
           break;
@@ -782,7 +791,9 @@ export default function ResultCard() {
 
         case 'field-start': {
           const field = event.field;
-          const target = getStreamTarget(next);
+          // Determine target: item fields or top-level fields
+          const isMultiItem = next.translationType === 'multi' && next.currentItemIndex >= 0 && next.items[next.currentItemIndex];
+          const target = isMultiItem ? next.items[next.currentItemIndex] : next;
 
           // For container children (e.g. definitions.def), use counter for unique keys
           if (field.includes('.')) {
@@ -793,6 +804,7 @@ export default function ResultCard() {
             if (event.attrs) {
               target.fieldAttrs[key] = event.attrs as Record<string, string>;
             }
+            console.log('[stream] → field-start:', key, event.attrs ? JSON.stringify(event.attrs) : '');
           } else {
             // Simple field or container
             if (target.fields[field] === undefined) {
@@ -801,18 +813,15 @@ export default function ResultCard() {
             if (event.attrs) {
               target.fieldAttrs[field] = event.attrs as Record<string, string>;
             }
-          }
-
-          // Force items array update for multi mode
-          if (next.translationType === 'multi' && next.currentItemIndex >= 0) {
-            next.items = [...next.items];
+            console.log('[stream] → field-start:', field);
           }
           break;
         }
 
         case 'field-delta': {
           const field = event.field;
-          const target = getStreamTarget(next);
+          const isMultiItem = next.translationType === 'multi' && next.currentItemIndex >= 0 && next.items[next.currentItemIndex];
+          const target = isMultiItem ? next.items[next.currentItemIndex] : next;
 
           if (field.includes('.')) {
             // Find the latest key for this compound field
@@ -826,36 +835,33 @@ export default function ResultCard() {
               target.fields[field] += event.text;
             }
           }
-
-          if (next.translationType === 'multi' && next.currentItemIndex >= 0) {
-            next.items = [...next.items];
-          }
           break;
         }
 
         case 'field-end': {
           const field = event.field;
-          const target = getStreamTarget(next);
+          const isMultiItem = next.translationType === 'multi' && next.currentItemIndex >= 0 && next.items[next.currentItemIndex];
+          const target = isMultiItem ? next.items[next.currentItemIndex] : next;
 
           if (field.includes('.')) {
             const count = (childCountsRef.current[field] || 1) - 1;
             const key = count === 0 ? field : `${field}#${count}`;
             target.completedFields.add(key);
+            console.log('[stream] → field-end:', key);
           } else {
             target.completedFields.add(field);
-          }
-
-          if (next.translationType === 'multi' && next.currentItemIndex >= 0) {
-            next.items = [...next.items];
+            console.log('[stream] → field-end:', field);
           }
           break;
         }
 
         case 'complete':
+          console.log('[stream] → phase: complete');
           next.phase = 'complete';
           break;
 
         case 'error':
+          console.error('[stream] → error:', event.message);
           setError({ code: 'STREAM_ERROR', message: event.message, action: 'retry' });
           next.phase = 'idle';
           break;
@@ -863,7 +869,7 @@ export default function ResultCard() {
 
       return next;
     });
-  }, [getStreamTarget]);
+  }, []);
 
   useEffect(() => {
     const setupListeners = async () => {
