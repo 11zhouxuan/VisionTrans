@@ -1033,15 +1033,7 @@ pub async fn translate_stream(
 
     match config.provider.as_str() {
         "bedrock" => {
-            // Bedrock doesn't support SSE streaming, but we still feed the response
-            // through the XmlStreamProcessor to emit field-level events
-            let translation = call_bedrock(config, &prompt, image_base64).await?;
-            let mut processor = XmlStreamProcessor::new(emitter, target_lang_name.to_string());
-            // Feed the entire response - the processor will emit thinking, rendering,
-            // field-start/delta/end, and we call finalize for complete
-            processor.feed(&translation);
-            processor.finalize();
-            Ok(translation)
+            call_bedrock_stream(config, &prompt, image_base64, emitter, target_lang_name).await
         }
         _ => {
             call_openai_stream(config, &prompt, image_base64, emitter, target_lang_name).await
@@ -1132,6 +1124,194 @@ async fn call_openai_stream(
                     }
                 }
             }
+        }
+    }
+
+    processor.finalize();
+    Ok(processor.full_xml)
+}
+
+/// Bedrock converse-stream implementation
+async fn call_bedrock_stream(
+    config: &LLMConfig,
+    prompt: &str,
+    image_base64: &str,
+    emitter: StreamEmitter,
+    target_lang_name: &str,
+) -> Result<String, AppError> {
+    let client = build_http_client(&config.proxy)?;
+
+    let request = BedrockRequest {
+        system: vec![BedrockTextBlock {
+            text: "You are a professional translator. Follow the user's instructions precisely."
+                .to_string(),
+        }],
+        messages: vec![BedrockMessage {
+            role: "user".into(),
+            content: vec![
+                BedrockContentPart::Text {
+                    text: prompt.to_string(),
+                },
+                BedrockContentPart::Image {
+                    image: BedrockImageBlock {
+                        format: "png".to_string(),
+                        source: BedrockImageSource {
+                            bytes: image_base64.to_string(),
+                        },
+                    },
+                },
+            ],
+        }],
+        inference_config: BedrockInferenceConfig {
+            max_tokens: 4096,
+            temperature: 0.1,
+        },
+    };
+
+    // Use converse-stream endpoint for streaming
+    let url = format!(
+        "https://bedrock-runtime.{}.amazonaws.com/model/{}/converse-stream",
+        config.bedrock_region,
+        urlencoding::encode(&config.bedrock_model_id)
+    );
+
+    eprintln!("[bedrock-stream] Sending request to: {}", &url);
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.bedrock_api_key))
+        .header("Content-Type", "application/json")
+        .json(&request)
+        .timeout(Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(AppError::from_reqwest)?;
+
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(AppError::ApiAuthError);
+    }
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(AppError::RateLimitExceeded);
+    }
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(AppError::LLMResponseError(format!(
+            "Bedrock Stream HTTP {}: {}",
+            status, error_text
+        )));
+    }
+
+    let content_type = response.headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    eprintln!("[bedrock-stream] Response content-type: {}", &content_type);
+
+    let mut processor = XmlStreamProcessor::new(emitter, target_lang_name.to_string());
+
+    if content_type.contains("application/vnd.amazon.eventstream") {
+        // AWS Event Stream binary format
+        let mut byte_stream = response.bytes_stream();
+        let mut event_buf: Vec<u8> = Vec::new();
+
+        while let Some(chunk_result) = byte_stream.next().await {
+            let chunk = chunk_result.map_err(|e| AppError::LLMResponseError(format!("Stream error: {}", e)))?;
+            event_buf.extend_from_slice(&chunk);
+
+            // Parse AWS event stream messages from buffer
+            while event_buf.len() >= 12 {
+                // Prelude: total_len (4) + headers_len (4) + prelude_crc (4)
+                let total_len = u32::from_be_bytes([event_buf[0], event_buf[1], event_buf[2], event_buf[3]]) as usize;
+                if event_buf.len() < total_len {
+                    break; // Need more data
+                }
+
+                let headers_len = u32::from_be_bytes([event_buf[4], event_buf[5], event_buf[6], event_buf[7]]) as usize;
+                // Skip prelude (12 bytes), parse headers, then payload
+                let headers_start = 12;
+                let payload_start = headers_start + headers_len;
+                let payload_end = total_len - 4; // Last 4 bytes are message CRC
+
+                // Extract event type from headers
+                let mut event_type = String::new();
+                let mut pos = headers_start;
+                while pos < payload_start && pos < event_buf.len() {
+                    if pos >= event_buf.len() { break; }
+                    let name_len = event_buf[pos] as usize;
+                    pos += 1;
+                    if pos + name_len > event_buf.len() { break; }
+                    let name = String::from_utf8_lossy(&event_buf[pos..pos + name_len]).to_string();
+                    pos += name_len;
+                    if pos >= event_buf.len() { break; }
+                    let value_type = event_buf[pos];
+                    pos += 1;
+                    if value_type == 7 {
+                        // String type
+                        if pos + 2 > event_buf.len() { break; }
+                        let value_len = u16::from_be_bytes([event_buf[pos], event_buf[pos + 1]]) as usize;
+                        pos += 2;
+                        if pos + value_len > event_buf.len() { break; }
+                        let value = String::from_utf8_lossy(&event_buf[pos..pos + value_len]).to_string();
+                        pos += value_len;
+                        if name == ":event-type" {
+                            event_type = value;
+                        }
+                    } else {
+                        // Skip unknown header types
+                        break;
+                    }
+                }
+
+                // Extract payload
+                if payload_start < payload_end && payload_end <= event_buf.len() {
+                    let payload = &event_buf[payload_start..payload_end];
+                    if let Ok(payload_str) = std::str::from_utf8(payload) {
+                        if !payload_str.is_empty() {
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(payload_str) {
+                                // Extract text delta from contentBlockDelta events
+                                if event_type == "contentBlockDelta" {
+                                    if let Some(text) = json.get("delta")
+                                        .and_then(|d| d.get("text"))
+                                        .and_then(|t| t.as_str())
+                                    {
+                                        processor.feed(text);
+                                    }
+                                }
+                                // Log non-delta events for debugging
+                                if event_type != "contentBlockDelta" {
+                                    eprintln!("[bedrock-stream] event: {} payload: {}", &event_type, payload_str);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Remove processed message from buffer
+                event_buf = event_buf[total_len..].to_vec();
+            }
+        }
+    } else {
+        // Fallback: non-streaming JSON response (API Gateway or proxy might not support event stream)
+        eprintln!("[bedrock-stream] Fallback to JSON response (not event stream)");
+        let body = response.text().await.unwrap_or_default();
+        if let Ok(json) = serde_json::from_str::<BedrockResponse>(&body) {
+            let translation = json
+                .output
+                .and_then(|o| o.message)
+                .map(|m| {
+                    m.content
+                        .iter()
+                        .filter_map(|c| c.text.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+            processor.feed(&translation);
+        } else {
+            // Try to feed raw body through processor
+            processor.feed(&body);
         }
     }
 
