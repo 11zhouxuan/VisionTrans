@@ -1033,14 +1033,14 @@ pub async fn translate_stream(
 
     match config.provider.as_str() {
         "bedrock" => {
-            // Bedrock doesn't support streaming yet, fall back to non-stream
-            // but still emit events for consistent frontend behavior
-            emitter.thinking();
+            // Bedrock doesn't support SSE streaming, but we still feed the response
+            // through the XmlStreamProcessor to emit field-level events
             let translation = call_bedrock(config, &prompt, image_base64).await?;
-            let source_language = extract_source_language(&translation).unwrap_or_else(|| "AUTO".to_string());
-            let translation_type = extract_translation_type(&translation).unwrap_or_else(|| "word".to_string());
-            emitter.rendering(&translation_type, &source_language, target_lang_name);
-            emitter.complete(&translation);
+            let mut processor = XmlStreamProcessor::new(emitter, target_lang_name.to_string());
+            // Feed the entire response - the processor will emit thinking, rendering,
+            // field-start/delta/end, and we call finalize for complete
+            processor.feed(&translation);
+            processor.finalize();
             Ok(translation)
         }
         _ => {
