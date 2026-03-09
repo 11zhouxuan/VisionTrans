@@ -569,9 +569,11 @@ impl XmlStreamProcessor {
 
     /// Feed a chunk of text from SSE and process it
     fn feed(&mut self, chunk: &str) {
+        eprintln!("[xml-feed] chunk len={}, buffer len before={}", chunk.len(), self.buffer.len());
         self.full_xml.push_str(chunk);
         self.buffer.push_str(chunk);
         self.process_buffer();
+        eprintln!("[xml-feed] after process: state={:?}, buffer len={}", self.state, self.buffer.len());
     }
 
     fn process_buffer(&mut self) {
