@@ -112,7 +112,7 @@ pub async fn signal_result_ready(
     let image_base64 = pending.image_base64;
     let use_stream = config.enable_stream;
 
-    tauri::async_runtime::spawn(async move {
+    let task_handle = tauri::async_runtime::spawn(async move {
         if use_stream {
             // Streaming mode: events are emitted progressively via translation-stream
             let stream_result = llm_client::translate_stream(&config, &image_base64, &app_handle, &win_id).await;
@@ -182,6 +182,9 @@ pub async fn signal_result_ready(
         }
     });
 
+    // Store the task handle for cancellation on window close
+    state.active_tasks.lock().unwrap().insert(window_id.clone(), task_handle);
+
     Ok(())
 }
 
@@ -230,6 +233,13 @@ pub async fn release_result_slot(
     state: State<'_, AppState>,
     window_id: String,
 ) -> Result<(), AppError> {
+    // Abort any active streaming task for this window
+    if let Some(handle) = state.active_tasks.lock().unwrap().remove(&window_id) {
+        eprintln!("[translate] Aborting active task for closed window: {}", &window_id);
+        handle.abort();
+    }
+    // Also remove any pending translation that hasn't started yet
+    state.pending_translations.lock().unwrap().remove(&window_id);
     state.release_result_window(&window_id);
     eprintln!("[translate] Released result slot: {} (active: {})", window_id, state.active_count());
     Ok(())

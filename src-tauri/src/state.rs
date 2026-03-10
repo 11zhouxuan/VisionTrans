@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use tokio::task::JoinHandle;
 
 /// Application runtime global state, injected via Tauri's State mechanism
 pub struct AppState {
@@ -18,6 +19,8 @@ pub struct AppState {
     pub result_window_counter: Mutex<u32>,
     /// Pending translation requests waiting for window ready signal
     pub pending_translations: Mutex<HashMap<String, PendingTranslation>>,
+    /// Active streaming task handles (for cancellation on window close)
+    pub active_tasks: Mutex<HashMap<String, JoinHandle<()>>>,
 }
 
 /// A translation request waiting for the result window to signal readiness
@@ -37,6 +40,7 @@ impl AppState {
             active_result_windows: Mutex::new(HashSet::new()),
             result_window_counter: Mutex::new(0),
             pending_translations: Mutex::new(HashMap::new()),
+            active_tasks: Mutex::new(HashMap::new()),
         }
     }
 
