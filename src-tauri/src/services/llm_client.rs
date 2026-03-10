@@ -993,11 +993,16 @@ impl XmlStreamProcessor {
     fn emit_buffered_delta(&mut self, field: &str, keep: usize) {
         if self.buffer.len() > keep {
             let emit_len = self.buffer.len() - keep;
+            // Find a safe char boundary at or before emit_len
+            let emit_boundary = self.floor_char_boundary(&self.buffer, emit_len);
+            if emit_boundary == 0 {
+                return;
+            }
             // Don't split in the middle of a potential tag
-            let safe_len = if let Some(lt_pos) = self.buffer[..emit_len].rfind('<') {
+            let safe_len = if let Some(lt_pos) = self.buffer[..emit_boundary].rfind('<') {
                 lt_pos
             } else {
-                emit_len
+                emit_boundary
             };
             if safe_len > 0 {
                 let text = self.buffer[..safe_len].to_string();
@@ -1005,6 +1010,18 @@ impl XmlStreamProcessor {
                 self.buffer = self.buffer[safe_len..].to_string();
             }
         }
+    }
+
+    /// Find the largest byte index <= pos that is a valid char boundary
+    fn floor_char_boundary(&self, s: &str, pos: usize) -> usize {
+        if pos >= s.len() {
+            return s.len();
+        }
+        let mut i = pos;
+        while i > 0 && !s.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
     }
 
     /// Finalize - flush any remaining buffer and emit complete
