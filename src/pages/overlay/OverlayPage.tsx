@@ -310,9 +310,9 @@ export default function OverlayPage() {
 
     // Listen for screenshot-ready event (for pre-created window reuse)
     const unlisten = listen('screenshot-ready', () => {
-      // Clear annotations but keep old screenshot visible until new one loads
-      // (this prevents the black flash between screenshots)
+      // Clear annotations and selection for new screenshot
       annotationsRef.current = [];
+      setInitialSelection(null);
       // Fetch new screenshot (will replace old one when loaded)
       fetchScreenshot();
     });
@@ -375,18 +375,12 @@ export default function OverlayPage() {
     redraw();
   }, [redraw]);
 
+  // No initial selection - user draws their own by clicking and dragging
   useEffect(() => {
     if (bgImage) {
-      const padding = 0.1;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      setInitialSelection({
-        x: Math.round(w * padding), y: Math.round(h * padding),
-        width: Math.round(w * (1 - 2 * padding)), height: Math.round(h * (1 - 2 * padding)),
-      });
       redraw();
     }
-  }, [bgImage, setInitialSelection, redraw]);
+  }, [bgImage, redraw]);
 
   const showToolbar = selection && selection.width > MIN_CROP_SIZE && selection.height > MIN_CROP_SIZE && !isDrawing && !isResizing;
 
