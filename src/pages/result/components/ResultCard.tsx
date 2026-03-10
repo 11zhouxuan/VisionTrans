@@ -705,6 +705,7 @@ export default function ResultCard() {
   const [copied, setCopied] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>(createInitialStreamState);
   const cardRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // Track container child counts for unique keys
   const childCountsRef = useRef<Record<string, number>>({});
 
@@ -909,6 +910,19 @@ export default function ResultCard() {
   // Resize window when content changes
   useEffect(() => { resizeWindowToFit(); }, [loading, result, error, streaming, resizeWindowToFit]);
 
+  // Auto-scroll during streaming: keep latest content visible at bottom
+  // When streaming completes, scroll back to top
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    if (isStreaming) {
+      // During streaming, scroll to bottom to show latest content
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    } else if (streaming.phase === 'complete' || (parsed && !isStreaming)) {
+      // When complete, scroll to top
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [streaming, isStreaming, parsed]);
+
   // Auto-save to wordbook when result arrives (all types including passage)
   useEffect(() => {
     if (result?.translation && parsed) {
@@ -1026,7 +1040,7 @@ export default function ResultCard() {
       </div>
 
       {/* Content - scrollable */}
-      <div className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: MAX_CARD_HEIGHT - 80 }}>
+      <div ref={scrollRef} className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar" style={{ maxHeight: MAX_CARD_HEIGHT - 80 }}>
         {loading ? (
           <div className="flex items-center gap-2 text-gray-400 py-2">
             <Loader2 className="w-4 h-4 animate-spin" />
