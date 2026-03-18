@@ -308,6 +308,18 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
+    // Read extra params based on provider
+    let extra_params = match provider.as_str() {
+        "bedrock" => store
+            .get("bedrockExtraParams")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default(),
+        _ => store
+            .get("extraParams")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default(),
+    };
+
     Ok(LLMConfig {
         provider,
         api_key,
@@ -319,6 +331,7 @@ fn read_llm_config(app: &AppHandle) -> Result<LLMConfig, AppError> {
         target_language,
         proxy,
         enable_stream,
+        extra_params,
     })
 }
 

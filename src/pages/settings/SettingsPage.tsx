@@ -22,9 +22,11 @@ export default function SettingsPage() {
         const apiKey = await store.get<string>('apiKey') ?? DEFAULT_CONFIG.apiKey;
         const endpoint = await store.get<string>('endpoint') ?? DEFAULT_CONFIG.endpoint;
         const model = await store.get<string>('model') ?? DEFAULT_CONFIG.model;
+        const extraParams = await store.get<string>('extraParams') ?? DEFAULT_CONFIG.extraParams;
         const bedrockApiKey = await store.get<string>('bedrockApiKey') ?? DEFAULT_CONFIG.bedrockApiKey;
         const bedrockModelId = await store.get<string>('bedrockModelId') ?? DEFAULT_CONFIG.bedrockModelId;
         const bedrockRegion = await store.get<string>('bedrockRegion') ?? DEFAULT_CONFIG.bedrockRegion;
+        const bedrockExtraParams = await store.get<string>('bedrockExtraParams') ?? DEFAULT_CONFIG.bedrockExtraParams;
         const targetLanguage = await store.get<'zh' | 'en'>('targetLanguage') ?? DEFAULT_CONFIG.targetLanguage;
         const uiLanguage = await store.get<UILanguage>('uiLanguage') ?? DEFAULT_CONFIG.uiLanguage;
         const hotkey = await store.get<string>('hotkey') ?? DEFAULT_CONFIG.hotkey;
@@ -45,8 +47,8 @@ export default function SettingsPage() {
 
         setUILanguage(uiLanguage);
         setConfig({
-          provider, apiKey, endpoint, model,
-          bedrockApiKey, bedrockModelId, bedrockRegion,
+          provider, apiKey, endpoint, model, extraParams,
+          bedrockApiKey, bedrockModelId, bedrockRegion, bedrockExtraParams,
           targetLanguage, uiLanguage, hotkey, proxy,
           wordbookPath: resolvedWordbookPath,
           saveScreenshot,
@@ -68,9 +70,11 @@ export default function SettingsPage() {
       await store.set('apiKey', newConfig.apiKey);
       await store.set('endpoint', newConfig.endpoint);
       await store.set('model', newConfig.model);
+      await store.set('extraParams', newConfig.extraParams);
       await store.set('bedrockApiKey', newConfig.bedrockApiKey);
       await store.set('bedrockModelId', newConfig.bedrockModelId);
       await store.set('bedrockRegion', newConfig.bedrockRegion);
+      await store.set('bedrockExtraParams', newConfig.bedrockExtraParams);
       await store.set('targetLanguage', newConfig.targetLanguage);
       await store.set('uiLanguage', newConfig.uiLanguage);
       await store.set('hotkey', newConfig.hotkey);
@@ -125,14 +129,18 @@ export default function SettingsPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <ApiSettings
             provider={config.provider} apiKey={config.apiKey} endpoint={config.endpoint} model={config.model}
+            extraParams={config.extraParams}
             bedrockApiKey={config.bedrockApiKey} bedrockModelId={config.bedrockModelId} bedrockRegion={config.bedrockRegion}
+            bedrockExtraParams={config.bedrockExtraParams}
             onProviderChange={(v) => updateConfig({ provider: v })}
             onApiKeyChange={(v) => updateConfig({ apiKey: v })}
             onEndpointChange={(v) => updateConfig({ endpoint: v })}
             onModelChange={(v) => updateConfig({ model: v })}
+            onExtraParamsChange={(v) => updateConfig({ extraParams: v })}
             onBedrockApiKeyChange={(v) => updateConfig({ bedrockApiKey: v })}
             onBedrockModelIdChange={(v) => updateConfig({ bedrockModelId: v })}
             onBedrockRegionChange={(v) => updateConfig({ bedrockRegion: v })}
+            onBedrockExtraParamsChange={(v) => updateConfig({ bedrockExtraParams: v })}
           />
         </div>
 

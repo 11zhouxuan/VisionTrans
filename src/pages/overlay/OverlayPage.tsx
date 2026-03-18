@@ -310,9 +310,33 @@ export default function OverlayPage() {
 
     // Listen for screenshot-ready event (for pre-created window reuse)
     const unlisten = listen('screenshot-ready', () => {
-      // Clear annotations and selection for new screenshot
+      // CRITICAL: Clear old bgImage FIRST to prevent stale image flash.
+      // Without this, React re-renders triggered by setInitialSelection(null)
+      // would call redraw() with the OLD bgImage, briefly painting the
+      // previous screenshot on the canvas before the new one loads.
+      setBgImage(null);
+      setScreenshotBase64(null);
+
+      // Clear annotations, undo/redo, and selection for new screenshot
       annotationsRef.current = [];
+      undoStack.current = [];
+      redoStack.current = [];
+      setUndoCount(0);
+      setRedoCount(0);
       setInitialSelection(null);
+
+      // Clear canvas immediately to avoid any residual content
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        }
+      }
+
       // Fetch new screenshot (will replace old one when loaded)
       fetchScreenshot();
     });

@@ -20,6 +20,11 @@ pub struct LLMConfig {
     pub target_language: String,
     pub proxy: Option<ProxyConfig>,
     pub enable_stream: bool,
+    /// Extra parameters as JSON string (e.g. {"temperature": 0.7, "top_p": 0.9})
+    /// For OpenAI: merged into the chat completion request body
+    /// For Bedrock: merged into the inferenceConfig
+    #[serde(default)]
+    pub extra_params: String,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -218,12 +223,15 @@ async fn call_openai(
         stream: None,
     };
 
+    // Merge extra params into the request JSON
+    let request_json = merge_openai_extra_params(&request, &config.extra_params)?;
+
     let endpoint = normalize_endpoint(&config.endpoint);
     let response = client
         .post(&endpoint)
         .header("Authorization", format!("Bearer {}", config.api_key))
         .header("Content-Type", "application/json")
-        .json(&request)
+        .json(&request_json)
         .timeout(Duration::from_secs(120))
         .send()
         .await
@@ -321,6 +329,9 @@ async fn call_bedrock(
         },
     };
 
+    // Merge extra params into the request JSON
+    let request_json = merge_bedrock_extra_params(&request, &config.extra_params)?;
+
     let url = format!(
         "https://bedrock-runtime.{}.amazonaws.com/model/{}/converse",
         config.bedrock_region,
@@ -331,7 +342,7 @@ async fn call_bedrock(
         .post(&url)
         .header("Authorization", format!("Bearer {}", config.bedrock_api_key))
         .header("Content-Type", "application/json")
-        .json(&request)
+        .json(&request_json)
         .timeout(Duration::from_secs(120))
         .send()
         .await
@@ -1087,12 +1098,15 @@ async fn call_openai_stream(
         stream: Some(true),
     };
 
+    // Merge extra params into the request JSON
+    let request_json = merge_openai_extra_params(&request, &config.extra_params)?;
+
     let endpoint = normalize_endpoint(&config.endpoint);
     let response = client
         .post(&endpoint)
         .header("Authorization", format!("Bearer {}", config.api_key))
         .header("Content-Type", "application/json")
-        .json(&request)
+        .json(&request_json)
         .timeout(Duration::from_secs(180))
         .send()
         .await
@@ -1184,6 +1198,9 @@ async fn call_bedrock_stream(
         },
     };
 
+    // Merge extra params into the request JSON
+    let request_json = merge_bedrock_extra_params(&request, &config.extra_params)?;
+
     // Use converse-stream endpoint for streaming
     let url = format!(
         "https://bedrock-runtime.{}.amazonaws.com/model/{}/converse-stream",
@@ -1197,7 +1214,7 @@ async fn call_bedrock_stream(
         .post(&url)
         .header("Authorization", format!("Bearer {}", config.bedrock_api_key))
         .header("Content-Type", "application/json")
-        .json(&request)
+        .json(&request_json)
         .timeout(Duration::from_secs(180))
         .send()
         .await
@@ -1333,6 +1350,78 @@ async fn call_bedrock_stream(
 
     processor.finalize();
     Ok(processor.full_xml)
+}
+
+// ===== Extra params merge helpers =====
+
+/// Parse extra_params JSON string into a serde_json::Value object.
+/// Returns an empty object if the string is empty or invalid.
+fn parse_extra_params(extra_params: &str) -> serde_json::Map<String, serde_json::Value> {
+    let trimmed = extra_params.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return serde_json::Map::new();
+    }
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => {
+            eprintln!("[extra-params] Failed to parse extra params: {}", trimmed);
+            serde_json::Map::new()
+        }
+    }
+}
+
+/// Merge extra params into an OpenAI chat completion request.
+/// Extra params are merged at the top level of the request body.
+/// For example: {"temperature": 0.7, "top_p": 0.9, "max_tokens": 2048}
+/// will override the corresponding fields in the request.
+fn merge_openai_extra_params(
+    request: &OpenAIChatRequest,
+    extra_params: &str,
+) -> Result<serde_json::Value, AppError> {
+    let mut json = serde_json::to_value(request)
+        .map_err(|e| AppError::Internal(format!("Failed to serialize request: {}", e)))?;
+
+    let extras = parse_extra_params(extra_params);
+    if !extras.is_empty() {
+        if let serde_json::Value::Object(ref mut map) = json {
+            for (key, value) in extras {
+                eprintln!("[extra-params] OpenAI: setting {} = {}", &key, &value);
+                map.insert(key, value);
+            }
+        }
+    }
+
+    Ok(json)
+}
+
+/// Merge extra params into a Bedrock converse request.
+/// Extra params are merged into the inferenceConfig object.
+/// For example: {"temperature": 0.7, "topP": 0.9, "maxTokens": 2048}
+/// will override the corresponding fields in inferenceConfig.
+fn merge_bedrock_extra_params(
+    request: &BedrockRequest,
+    extra_params: &str,
+) -> Result<serde_json::Value, AppError> {
+    let mut json = serde_json::to_value(request)
+        .map_err(|e| AppError::Internal(format!("Failed to serialize request: {}", e)))?;
+
+    let extras = parse_extra_params(extra_params);
+    if !extras.is_empty() {
+        if let serde_json::Value::Object(ref mut map) = json {
+            // Get or create inferenceConfig
+            let inference_config = map
+                .entry("inferenceConfig")
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+            if let serde_json::Value::Object(ref mut config_map) = inference_config {
+                for (key, value) in extras {
+                    eprintln!("[extra-params] Bedrock inferenceConfig: setting {} = {}", &key, &value);
+                    config_map.insert(key, value);
+                }
+            }
+        }
+    }
+
+    Ok(json)
 }
 
 // ===== Helpers =====

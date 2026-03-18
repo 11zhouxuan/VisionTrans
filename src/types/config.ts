@@ -8,10 +8,12 @@ export interface AppConfig {
   apiKey: string;
   endpoint: string;
   model: string;
+  extraParams: string; // JSON string for extra API parameters (e.g. temperature, top_p)
   // Bedrock settings
   bedrockApiKey: string;
   bedrockModelId: string;
   bedrockRegion: string;
+  bedrockExtraParams: string; // JSON string for extra Bedrock parameters
   // Common settings
   targetLanguage: 'zh' | 'en';
   uiLanguage: UILanguage;
@@ -34,9 +36,11 @@ export const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
   endpoint: 'https://api.openai.com/v1',
   model: 'gpt-4o',
+  extraParams: '{}',
   bedrockApiKey: '',
   bedrockModelId: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
   bedrockRegion: 'us-east-1',
+  bedrockExtraParams: '{}',
   targetLanguage: 'zh',
   uiLanguage: 'zh',
   hotkey: 'Alt+Q',
