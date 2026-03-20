@@ -41,7 +41,6 @@ const ANN_HANDLE_THRESHOLD = 8;
 // ==================== Hit Testing ====================
 
 function hitTestAnnotations(x: number, y: number, annotations: Annotation[]): AnnotationHandle | null {
-  // Test in reverse order (top-most first)
   for (let i = annotations.length - 1; i >= 0; i--) {
     const ann = annotations[i];
     const hit = hitTestAnnotation(x, y, ann, i);
@@ -57,20 +56,14 @@ function hitTestAnnotation(x: number, y: number, ann: Annotation, idx: number): 
     const { x: rx, y: ry, width: rw, height: rh } = ann;
     const mx = rx + rw / 2;
     const my = ry + rh / 2;
-
-    // Corner handles
     if (Math.abs(x - rx) <= t && Math.abs(y - ry) <= t) return { annIdx: idx, handle: 'nw' };
     if (Math.abs(x - (rx + rw)) <= t && Math.abs(y - ry) <= t) return { annIdx: idx, handle: 'ne' };
     if (Math.abs(x - (rx + rw)) <= t && Math.abs(y - (ry + rh)) <= t) return { annIdx: idx, handle: 'se' };
     if (Math.abs(x - rx) <= t && Math.abs(y - (ry + rh)) <= t) return { annIdx: idx, handle: 'sw' };
-
-    // Edge midpoint handles
     if (Math.abs(x - mx) <= t && Math.abs(y - ry) <= t) return { annIdx: idx, handle: 'n' };
     if (Math.abs(x - (rx + rw)) <= t && Math.abs(y - my) <= t) return { annIdx: idx, handle: 'e' };
     if (Math.abs(x - mx) <= t && Math.abs(y - (ry + rh)) <= t) return { annIdx: idx, handle: 's' };
     if (Math.abs(x - rx) <= t && Math.abs(y - my) <= t) return { annIdx: idx, handle: 'w' };
-
-    // Edge proximity (for move)
     const onEdge =
       (Math.abs(x - rx) <= t && y >= ry - t && y <= ry + rh + t) ||
       (Math.abs(x - (rx + rw)) <= t && y >= ry - t && y <= ry + rh + t) ||
@@ -80,17 +73,13 @@ function hitTestAnnotation(x: number, y: number, ann: Annotation, idx: number): 
   }
 
   if (ann.type === 'arrow') {
-    // Check endpoints
     if (Math.abs(x - ann.x1) <= t && Math.abs(y - ann.y1) <= t) return { annIdx: idx, handle: 'start' };
     if (Math.abs(x - ann.x2) <= t && Math.abs(y - ann.y2) <= t) return { annIdx: idx, handle: 'end' };
-
-    // Check proximity to the line
     const dist = pointToLineDistance(x, y, ann.x1, ann.y1, ann.x2, ann.y2);
     if (dist <= t + 2) return { annIdx: idx, handle: 'move' };
   }
 
   if (ann.type === 'brush') {
-    // Check proximity to any point in the stroke
     for (const pt of ann.points) {
       if (Math.abs(x - pt.x) <= t && Math.abs(y - pt.y) <= t) {
         return { annIdx: idx, handle: 'move' };
@@ -152,19 +141,12 @@ function drawAnnotationHandles(ctx: CanvasRenderingContext2D, ann: Annotation) {
 
   if (ann.type === 'rect') {
     const { x, y, width: w, height: h } = ann;
-    drawHandle(x, y);
-    drawHandle(x + w / 2, y);
-    drawHandle(x + w, y);
-    drawHandle(x + w, y + h / 2);
-    drawHandle(x + w, y + h);
-    drawHandle(x + w / 2, y + h);
-    drawHandle(x, y + h);
-    drawHandle(x, y + h / 2);
+    drawHandle(x, y); drawHandle(x + w / 2, y); drawHandle(x + w, y);
+    drawHandle(x + w, y + h / 2); drawHandle(x + w, y + h);
+    drawHandle(x + w / 2, y + h); drawHandle(x, y + h); drawHandle(x, y + h / 2);
   } else if (ann.type === 'arrow') {
-    drawHandle(ann.x1, ann.y1);
-    drawHandle(ann.x2, ann.y2);
+    drawHandle(ann.x1, ann.y1); drawHandle(ann.x2, ann.y2);
   }
-  // Brush: no handles, just move
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string) {
@@ -172,17 +154,14 @@ function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: nu
   const dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 5) return;
-
   const angle = Math.atan2(dy, dx);
   const headLen = Math.min(len * 0.35, 28);
   const headWidth = headLen * 0.7;
   const tailWidth = 3;
-
   const headBaseX = x2 - headLen * Math.cos(angle);
   const headBaseY = y2 - headLen * Math.sin(angle);
   const perpX = -Math.sin(angle);
   const perpY = Math.cos(angle);
-
   ctx.fillStyle = color;
   ctx.setLineDash([]);
   ctx.beginPath();
@@ -209,6 +188,31 @@ function getCursorForHandle(handle: AnnotationHandle | null): string | null {
   return null;
 }
 
+// ==================== Helper: close overlay with black screen ====================
+
+/**
+ * Show a black screen overlay, wait for macOS to composite it, then call close_overlay.
+ * This ensures macOS caches a black frame (not the old screenshot) when hiding the window.
+ * On next show(), the user sees black instead of the previous screenshot.
+ */
+function closeWithBlackScreen(
+  setScreenReady: (v: boolean) => void,
+  fallbackClose: () => Promise<void>,
+) {
+  // 1. Show black screen overlay immediately
+  setScreenReady(false);
+  // 2. Wait for the black screen to be composited by macOS (2 frames)
+  //    We use requestAnimationFrame here because the window is VISIBLE at this point
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      // 3. Now close — macOS will cache the black frame
+      invoke('close_overlay').catch(() => {
+        fallbackClose().catch(() => {});
+      });
+    });
+  });
+}
+
 // ==================== Main Component ====================
 
 export default function OverlayPage() {
@@ -220,9 +224,14 @@ export default function OverlayPage() {
   const [brushSize, setBrushSize] = useState(4);
   const [brushColor, setBrushColor] = useState('rgba(255, 50, 50, 0.8)');
 
+  // Black screen overlay: when false, a full-screen black div covers everything.
+  // This ensures macOS caches a black frame when the window is hidden,
+  // preventing the old screenshot from flashing on next show().
+  const [isScreenReady, setIsScreenReady] = useState(false);
+
   // Object-based annotations
   const annotationsRef = useRef<Annotation[]>([]);
-  const [annotationVersion, setAnnotationVersion] = useState(0); // trigger re-renders
+  const [annotationVersion, setAnnotationVersion] = useState(0);
   const isMarking = useRef(false);
   const markStart = useRef({ x: 0, y: 0 });
   const currentBrushPoints = useRef<{ x: number; y: number }[]>([]);
@@ -233,7 +242,7 @@ export default function OverlayPage() {
   const isEditingAnnotation = useRef(false);
   const hoveredHandleRef = useRef<AnnotationHandle | null>(null);
 
-  // Undo/Redo history (snapshots of annotations array)
+  // Undo/Redo history
   const undoStack = useRef<Annotation[][]>([]);
   const redoStack = useRef<Annotation[][]>([]);
   const [undoCount, setUndoCount] = useState(0);
@@ -249,7 +258,6 @@ export default function OverlayPage() {
   // Load screenshot image from file or base64
   const loadScreenshotImage = useCallback((data: ScreenshotData) => {
     if (!canvasRef.current) {
-      // Canvas not ready - reset capturing state so user can retry
       console.error('Canvas not available for screenshot rendering');
       invoke('close_overlay').catch(() => {});
       return;
@@ -267,53 +275,48 @@ export default function OverlayPage() {
     let fallbackAttempted = false;
 
     img.onload = () => {
-      // Draw the screenshot to canvas IMMEDIATELY (before React re-render)
-      // The window is still hidden at this point - it will only become visible
-      // after we call show_overlay_window below.
+      // Draw the screenshot to canvas IMMEDIATELY
       if (canvasRef.current) {
         const drawCtx = canvasRef.current.getContext('2d');
         if (drawCtx) {
           drawCtx.save();
-          drawCtx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+          drawCtx.setTransform(1, 0, 0, 1, 0, 0);
           drawCtx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
           drawCtx.restore();
         }
       }
-      // Update React state
       setBgImage(img);
       setScreenshotBase64(data.base64);
-      // Use double-rAF to ensure the canvas draw is fully composited before showing.
-      // The overlay window uses alphaValue=0 (transparent) instead of hide(),
-      // so it's still "visible" to macOS and rAF callbacks fire normally.
-      // First rAF: schedules after current frame
-      // Second rAF: ensures the browser has actually painted the canvas content
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          invoke('show_overlay_window').catch((err) => {
-            console.error('Failed to show overlay window:', err);
-          });
+
+      // Show the overlay window, then remove the black screen.
+      // Use setTimeout because the window is hidden (rAF won't fire on hidden windows).
+      setTimeout(() => {
+        invoke('show_overlay_window').then(() => {
+          // Window is now visible. Remove the black screen overlay to reveal the screenshot.
+          // Use a small delay to ensure the window is fully composited.
+          setTimeout(() => {
+            setIsScreenReady(true);
+          }, 16);
+        }).catch((err) => {
+          console.error('Failed to show overlay window:', err);
         });
-      });
+      }, 30);
     };
     img.onerror = () => {
       if (!fallbackAttempted && data.base64) {
-        // Fallback to base64 if asset:// fails
         console.warn('asset:// load failed, falling back to base64');
         fallbackAttempted = true;
         img.src = `data:image/png;base64,${data.base64}`;
       } else {
-        // Both asset:// and base64 failed - reset state so user can retry
         console.error('Failed to load screenshot image (all methods exhausted)');
         invoke('close_overlay').catch(() => {});
       }
     };
-    // Try asset:// protocol first (fast, bypasses IPC entirely)
     if (data.filePath) {
       img.src = convertFileSrc(data.filePath) + '?t=' + Date.now();
     } else if (data.base64) {
       img.src = `data:image/png;base64,${data.base64}`;
     } else {
-      // No image data at all - reset state
       console.error('Screenshot data has no filePath or base64');
       invoke('close_overlay').catch(() => {});
     }
@@ -321,37 +324,28 @@ export default function OverlayPage() {
 
   // Fetch screenshot data
   useEffect(() => {
-    // isTriggeredByEvent: true when called from screenshot-ready event,
-    // false when called on initial mount (pre-created window warmup).
-    // On initial mount, get_screenshot may fail because no capture has
-    // happened yet — this is expected and should NOT call close_overlay.
     const fetchScreenshot = async (isTriggeredByEvent = false) => {
       try {
         const data = await invoke<ScreenshotData>('get_screenshot');
         loadScreenshotImage(data);
       } catch (err) {
         if (isTriggeredByEvent) {
-          // This is a real failure during an active capture — reset state
           console.error('Failed to get screenshot:', err);
           invoke('close_overlay').catch(() => {});
         } else {
-          // Initial mount of pre-created window — no screenshot yet, expected
           console.log('[overlay] No screenshot data yet (pre-created window warmup)');
         }
       }
     };
     fetchScreenshot(false);
 
-    // Listen for screenshot-ready event (for pre-created window reuse)
     const unlisten = listen('screenshot-ready', () => {
-      // CRITICAL: Clear old bgImage FIRST to prevent stale image flash.
-      // Without this, React re-renders triggered by setInitialSelection(null)
-      // would call redraw() with the OLD bgImage, briefly painting the
-      // previous screenshot on the canvas before the new one loads.
+      // Show black screen immediately to cover any stale content
+      setIsScreenReady(false);
+
+      // Clear old state
       setBgImage(null);
       setScreenshotBase64(null);
-
-      // Clear annotations, undo/redo, and selection for new screenshot
       annotationsRef.current = [];
       undoStack.current = [];
       redoStack.current = [];
@@ -359,7 +353,7 @@ export default function OverlayPage() {
       setRedoCount(0);
       setInitialSelection(null);
 
-      // Clear canvas immediately to avoid any residual content
+      // Clear canvas
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -371,38 +365,29 @@ export default function OverlayPage() {
         }
       }
 
-      // Fetch new screenshot (will replace old one when loaded)
       fetchScreenshot(true);
     });
 
     return () => { unlisten.then(fn => fn()); };
   }, [loadScreenshotImage]);
 
-  // Render all annotations on the canvas (called after selection redraw)
-  // NOTE: This callback must have stable identity to prevent the useEffect
-  // that sets initial selection from re-firing when annotations change.
+  // Render all annotations on the canvas
   const overlayMarks = useCallback(() => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-
-    // Draw all committed annotations
     for (const ann of annotationsRef.current) {
       drawAnnotation(ctx, ann);
     }
-
-    // Draw handles for hovered annotation (when not actively marking)
     const hovered = hoveredHandleRef.current;
     if (hovered && !isMarking.current && !isEditingAnnotation.current) {
       const ann = annotationsRef.current[hovered.annIdx];
       if (ann) drawAnnotationHandles(ctx, ann);
     }
-
-    // Draw handles for annotation being edited
     if (isEditingAnnotation.current && editingHandle.current) {
       const ann = annotationsRef.current[editingHandle.current.annIdx];
       if (ann) drawAnnotationHandles(ctx, ann);
     }
-  }, []); // stable - reads from refs only
+  }, []);
 
   const {
     selection, isDrawing, isResizing,
@@ -410,7 +395,6 @@ export default function OverlayPage() {
     redraw, setInitialSelection, isOnResizeHandle,
   } = useSelection(canvasRef, bgImage, overlayMarks);
 
-  // Undo/Redo handlers
   const handleUndo = useCallback(() => {
     if (undoStack.current.length === 0) return;
     const current = JSON.parse(JSON.stringify(annotationsRef.current));
@@ -433,7 +417,6 @@ export default function OverlayPage() {
     redraw();
   }, [redraw]);
 
-  // No initial selection - user draws their own by clicking and dragging
   useEffect(() => {
     if (bgImage) {
       redraw();
@@ -445,14 +428,7 @@ export default function OverlayPage() {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const x = e.nativeEvent.offsetX;
     const y = e.nativeEvent.offsetY;
-
-    // Always prioritize selection resize handles
-    if (isOnResizeHandle(x, y)) {
-      onMouseDown(e);
-      return;
-    }
-
-    // Check if clicking on an annotation handle (for editing)
+    if (isOnResizeHandle(x, y)) { onMouseDown(e); return; }
     if (markTool !== 'none') {
       const hit = hitTestAnnotations(x, y, annotationsRef.current);
       if (hit) {
@@ -463,21 +439,16 @@ export default function OverlayPage() {
         return;
       }
     }
-
-    // Start new annotation inside selection
     if (markTool !== 'none' && selection) {
       if (x >= selection.x && x <= selection.x + selection.width &&
           y >= selection.y && y <= selection.y + selection.height) {
         saveSnapshot();
         isMarking.current = true;
         markStart.current = { x, y };
-        if (markTool === 'brush') {
-          currentBrushPoints.current = [{ x, y }];
-        }
+        if (markTool === 'brush') { currentBrushPoints.current = [{ x, y }]; }
         return;
       }
     }
-
     onMouseDown(e);
   }, [markTool, selection, onMouseDown, saveSnapshot, isOnResizeHandle]);
 
@@ -485,66 +456,43 @@ export default function OverlayPage() {
     const x = e.nativeEvent.offsetX;
     const y = e.nativeEvent.offsetY;
 
-    // Editing an existing annotation
     if (isEditingAnnotation.current && editingHandle.current) {
       const dx = x - editStartPos.current.x;
       const dy = y - editStartPos.current.y;
       const idx = editingHandle.current.annIdx;
       const ann = annotationsRef.current[idx];
       const h = editingHandle.current.handle;
-
       if (ann.type === 'rect') {
-        if (h === 'move') {
-          ann.x += dx; ann.y += dy;
-        } else if (h === 'nw') {
-          ann.x += dx; ann.y += dy; ann.width -= dx; ann.height -= dy;
-        } else if (h === 'n') {
-          ann.y += dy; ann.height -= dy;
-        } else if (h === 'ne') {
-          ann.width += dx; ann.y += dy; ann.height -= dy;
-        } else if (h === 'e') {
-          ann.width += dx;
-        } else if (h === 'se') {
-          ann.width += dx; ann.height += dy;
-        } else if (h === 's') {
-          ann.height += dy;
-        } else if (h === 'sw') {
-          ann.x += dx; ann.width -= dx; ann.height += dy;
-        } else if (h === 'w') {
-          ann.x += dx; ann.width -= dx;
-        }
-        // Ensure minimum size
+        if (h === 'move') { ann.x += dx; ann.y += dy; }
+        else if (h === 'nw') { ann.x += dx; ann.y += dy; ann.width -= dx; ann.height -= dy; }
+        else if (h === 'n') { ann.y += dy; ann.height -= dy; }
+        else if (h === 'ne') { ann.width += dx; ann.y += dy; ann.height -= dy; }
+        else if (h === 'e') { ann.width += dx; }
+        else if (h === 'se') { ann.width += dx; ann.height += dy; }
+        else if (h === 's') { ann.height += dy; }
+        else if (h === 'sw') { ann.x += dx; ann.width -= dx; ann.height += dy; }
+        else if (h === 'w') { ann.x += dx; ann.width -= dx; }
         if (ann.width < 5) ann.width = 5;
         if (ann.height < 5) ann.height = 5;
       } else if (ann.type === 'arrow') {
-        if (h === 'start') {
-          ann.x1 += dx; ann.y1 += dy;
-        } else if (h === 'end') {
-          ann.x2 += dx; ann.y2 += dy;
-        } else if (h === 'move') {
-          ann.x1 += dx; ann.y1 += dy; ann.x2 += dx; ann.y2 += dy;
-        }
+        if (h === 'start') { ann.x1 += dx; ann.y1 += dy; }
+        else if (h === 'end') { ann.x2 += dx; ann.y2 += dy; }
+        else if (h === 'move') { ann.x1 += dx; ann.y1 += dy; ann.x2 += dx; ann.y2 += dy; }
       } else if (ann.type === 'brush' && h === 'move') {
-        for (const pt of ann.points) {
-          pt.x += dx; pt.y += dy;
-        }
+        for (const pt of ann.points) { pt.x += dx; pt.y += dy; }
       }
-
       editStartPos.current = { x, y };
       redraw();
       return;
     }
 
-    // Drawing new annotation
     if (isMarking.current && markTool !== 'none') {
       if (markTool === 'brush') {
         currentBrushPoints.current.push({ x, y });
-        // Live preview: temporarily add brush annotation
         const tempAnn: BrushAnnotation = {
           type: 'brush', points: [...currentBrushPoints.current],
           color: brushColor, lineWidth: brushSize,
         };
-        // Draw preview
         redraw();
         const ctx = canvasRef.current?.getContext('2d');
         if (ctx) drawAnnotation(ctx, tempAnn);
@@ -556,38 +504,29 @@ export default function OverlayPage() {
           const ry = Math.min(markStart.current.y, y);
           const rw = Math.abs(x - markStart.current.x);
           const rh = Math.abs(y - markStart.current.y);
-          ctx.strokeStyle = brushColor;
-          ctx.lineWidth = 2;
-          ctx.setLineDash([]);
+          ctx.strokeStyle = brushColor; ctx.lineWidth = 2; ctx.setLineDash([]);
           ctx.strokeRect(rx, ry, rw, rh);
         }
       } else if (markTool === 'arrow') {
         redraw();
         const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) {
-          drawArrow(ctx, markStart.current.x, markStart.current.y, x, y, brushColor);
-        }
+        if (ctx) { drawArrow(ctx, markStart.current.x, markStart.current.y, x, y, brushColor); }
       }
       return;
     }
 
-    // Hover detection for annotation handles
     if (!isMarking.current && !isEditingAnnotation.current && markTool !== 'none') {
       const hit = hitTestAnnotations(x, y, annotationsRef.current);
       const prev = hoveredHandleRef.current;
       const changed = (hit === null) !== (prev === null) ||
         (hit && prev && (hit.annIdx !== prev.annIdx || hit.handle !== prev.handle));
-      if (changed) {
-        hoveredHandleRef.current = hit;
-        redraw(); // redraw to show/hide handles
-      }
+      if (changed) { hoveredHandleRef.current = hit; redraw(); }
     }
 
     onMouseMove(e);
   }, [markTool, brushColor, brushSize, onMouseMove, redraw]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    // Finish editing annotation
     if (isEditingAnnotation.current) {
       isEditingAnnotation.current = false;
       editingHandle.current = null;
@@ -595,48 +534,33 @@ export default function OverlayPage() {
       redraw();
       return;
     }
-
-    // Finish drawing new annotation
     if (isMarking.current && markTool !== 'none') {
       const x = e.nativeEvent.offsetX;
       const y = e.nativeEvent.offsetY;
-
       if (markTool === 'rect') {
         const rx = Math.min(markStart.current.x, x);
         const ry = Math.min(markStart.current.y, y);
         const rw = Math.abs(x - markStart.current.x);
         const rh = Math.abs(y - markStart.current.y);
         if (rw > 3 && rh > 3) {
-          annotationsRef.current.push({
-            type: 'rect', x: rx, y: ry, width: rw, height: rh,
-            color: brushColor, lineWidth: 2,
-          });
+          annotationsRef.current.push({ type: 'rect', x: rx, y: ry, width: rw, height: rh, color: brushColor, lineWidth: 2 });
         }
       } else if (markTool === 'arrow') {
         const len = Math.sqrt((x - markStart.current.x) ** 2 + (y - markStart.current.y) ** 2);
         if (len > 5) {
-          annotationsRef.current.push({
-            type: 'arrow',
-            x1: markStart.current.x, y1: markStart.current.y, x2: x, y2: y,
-            color: brushColor, lineWidth: 2,
-          });
+          annotationsRef.current.push({ type: 'arrow', x1: markStart.current.x, y1: markStart.current.y, x2: x, y2: y, color: brushColor, lineWidth: 2 });
         }
       } else if (markTool === 'brush') {
         if (currentBrushPoints.current.length > 1) {
-          annotationsRef.current.push({
-            type: 'brush', points: [...currentBrushPoints.current],
-            color: brushColor, lineWidth: brushSize,
-          });
+          annotationsRef.current.push({ type: 'brush', points: [...currentBrushPoints.current], color: brushColor, lineWidth: brushSize });
         }
         currentBrushPoints.current = [];
       }
-
       isMarking.current = false;
       setAnnotationVersion(v => v + 1);
       redraw();
       return;
     }
-
     onMouseUp();
   }, [markTool, brushColor, brushSize, onMouseUp, redraw]);
 
@@ -648,21 +572,19 @@ export default function OverlayPage() {
     tempCanvas.height = selection.height * dpr;
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return null;
-
-    // Draw background
     tempCtx.drawImage(bgImage,
       selection.x * dpr, selection.y * dpr, selection.width * dpr, selection.height * dpr,
       0, 0, selection.width * dpr, selection.height * dpr);
-
-    // Draw annotations (scaled)
     tempCtx.scale(dpr, dpr);
     tempCtx.translate(-selection.x, -selection.y);
-    for (const ann of annotationsRef.current) {
-      drawAnnotation(tempCtx, ann);
-    }
-
+    for (const ann of annotationsRef.current) { drawAnnotation(tempCtx, ann); }
     return tempCanvas.toDataURL('image/png').split(',')[1];
   }, [selection, bgImage]);
+
+  // Close overlay with black screen to prevent stale content flash on next show
+  const fallbackClose = useCallback(async () => {
+    try { await getCurrentWindow().close(); } catch {}
+  }, []);
 
   const handleTranslate = useCallback(async () => {
     const croppedBase64 = cropSelection();
@@ -671,13 +593,12 @@ export default function OverlayPage() {
       const pos = { x: 80, y: 64 };
       await invoke('start_translation', { imageBase64: croppedBase64, position: pos });
     } catch (err) { console.error('Failed:', err); }
-    // Use close_overlay (hides on macOS for reuse) instead of direct close
-    try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
-  }, [cropSelection, selection]);
+    closeWithBlackScreen(setIsScreenReady, fallbackClose);
+  }, [cropSelection, selection, fallbackClose]);
 
-  const handleCancel = useCallback(async () => {
-    try { await invoke('close_overlay'); } catch { await getCurrentWindow().close(); }
-  }, []);
+  const handleCancel = useCallback(() => {
+    closeWithBlackScreen(setIsScreenReady, fallbackClose);
+  }, [fallbackClose]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -691,16 +612,13 @@ export default function OverlayPage() {
   }, [handleCancel, handleTranslate, showToolbar, handleUndo, handleRedo]);
 
   const getCursor = () => {
-    // Show annotation handle cursor when hovering
     const handleCursor = getCursorForHandle(hoveredHandleRef.current);
     if (handleCursor && markTool !== 'none') return handleCursor;
-
     if (markTool === 'brush') return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${brushSize}' height='${brushSize}'%3E%3Ccircle cx='${brushSize/2}' cy='${brushSize/2}' r='${brushSize/2-1}' fill='rgba(255,50,50,0.3)' stroke='%23ef4444' stroke-width='1'/%3E%3C/svg%3E") ${brushSize/2} ${brushSize/2}, crosshair`;
     if (markTool === 'rect') return 'crosshair';
     return 'crosshair';
   };
 
-  // Suppress unused variable warning
   void annotationVersion;
 
   return (
@@ -709,7 +627,14 @@ export default function OverlayPage() {
       <canvas ref={canvasRef} className="w-full h-full"
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
 
-      {showToolbar && selection && (
+      {/* Black screen overlay: covers everything when not ready.
+          This ensures macOS caches a black frame when the window is hidden,
+          preventing the old screenshot from flashing on next show(). */}
+      {!isScreenReady && (
+        <div className="fixed inset-0 bg-black" style={{ zIndex: 9999 }} />
+      )}
+
+      {showToolbar && selection && isScreenReady && (
         <SelectionToolbar
           selection={selection} markTool={markTool} brushSize={brushSize} brushColor={brushColor}
           onSetMarkTool={setMarkTool} onSetBrushSize={setBrushSize} onSetBrushColor={setBrushColor}
@@ -718,38 +643,40 @@ export default function OverlayPage() {
           canUndo={undoCount > 0} canRedo={redoCount > 0}
           onCopy={async () => {
             const base64 = cropSelection();
-            // CRITICAL: Close overlay FIRST to reset window level.
-            // If we copy first and it triggers a system dialog (e.g., permission),
-            // the high-level overlay window would block the dialog, causing a deadlock.
-            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
+            closeWithBlackScreen(setIsScreenReady, async () => {
+              try { await getCurrentWindow().close(); } catch {}
+            });
             if (base64) {
-              try {
-                const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
-                const { Image } = await import('@tauri-apps/api/image');
-                const binaryStr = atob(base64);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-                const img = await Image.fromBytes(bytes);
-                await writeImage(img);
-              } catch (err) {
-                console.error('Failed to copy image to clipboard:', err);
-              }
+              // Small delay to let close_overlay execute first
+              setTimeout(async () => {
+                try {
+                  const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager');
+                  const { Image } = await import('@tauri-apps/api/image');
+                  const binaryStr = atob(base64);
+                  const bytes = new Uint8Array(binaryStr.length);
+                  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                  const img = await Image.fromBytes(bytes);
+                  await writeImage(img);
+                } catch (err) {
+                  console.error('Failed to copy image to clipboard:', err);
+                }
+              }, 100);
             }
           }}
           onSave={async () => {
             const base64 = cropSelection();
-            // CRITICAL: Close overlay FIRST to reset window level.
-            // The old <a download> approach triggered a macOS permission dialog
-            // that was blocked by the high-level overlay, causing a deadlock.
-            // Now we use a Rust command to write directly to ~/Downloads/.
-            try { await invoke('close_overlay'); } catch { try { await getCurrentWindow().close(); } catch {} }
+            closeWithBlackScreen(setIsScreenReady, async () => {
+              try { await getCurrentWindow().close(); } catch {}
+            });
             if (base64) {
-              try {
-                const savedPath = await invoke<string>('save_screenshot', { imageBase64: base64 });
-                console.log('Screenshot saved to:', savedPath);
-              } catch (err) {
-                console.error('Failed to save screenshot:', err);
-              }
+              setTimeout(async () => {
+                try {
+                  const savedPath = await invoke<string>('save_screenshot', { imageBase64: base64 });
+                  console.log('Screenshot saved to:', savedPath);
+                } catch (err) {
+                  console.error('Failed to save screenshot:', err);
+                }
+              }, 100);
             }
           }}
           onCancel={handleCancel}
