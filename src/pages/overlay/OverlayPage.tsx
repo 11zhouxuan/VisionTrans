@@ -282,17 +282,16 @@ export default function OverlayPage() {
       // Update React state
       setBgImage(img);
       setScreenshotBase64(data.base64);
-      // Use double-rAF to ensure the canvas draw is fully composited before showing.
-      // First rAF schedules after the current frame, second ensures the
-      // browser has actually painted the canvas content.
-      // Note: rAF works even on hidden windows in most WebView implementations.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          invoke('show_overlay_window').catch((err) => {
-            console.error('Failed to show overlay window:', err);
-          });
+      // Use setTimeout to let the canvas draw complete before showing the window.
+      // NOTE: Do NOT use requestAnimationFrame here — rAF callbacks don't fire
+      // on hidden windows (the browser skips painting for invisible windows).
+      // Since the overlay window is hidden until we call show_overlay_window,
+      // rAF would never execute and the window would never appear.
+      setTimeout(() => {
+        invoke('show_overlay_window').catch((err) => {
+          console.error('Failed to show overlay window:', err);
         });
-      });
+      }, 30); // ~2 frames at 60fps, enough for canvas to flush
     };
     img.onerror = () => {
       if (!fallbackAttempted && data.base64) {
@@ -320,17 +319,26 @@ export default function OverlayPage() {
 
   // Fetch screenshot data
   useEffect(() => {
-    const fetchScreenshot = async () => {
+    // isTriggeredByEvent: true when called from screenshot-ready event,
+    // false when called on initial mount (pre-created window warmup).
+    // On initial mount, get_screenshot may fail because no capture has
+    // happened yet — this is expected and should NOT call close_overlay.
+    const fetchScreenshot = async (isTriggeredByEvent = false) => {
       try {
         const data = await invoke<ScreenshotData>('get_screenshot');
         loadScreenshotImage(data);
       } catch (err) {
-        console.error('Failed to get screenshot:', err);
-        // Reset capturing state so user can retry
-        invoke('close_overlay').catch(() => {});
+        if (isTriggeredByEvent) {
+          // This is a real failure during an active capture — reset state
+          console.error('Failed to get screenshot:', err);
+          invoke('close_overlay').catch(() => {});
+        } else {
+          // Initial mount of pre-created window — no screenshot yet, expected
+          console.log('[overlay] No screenshot data yet (pre-created window warmup)');
+        }
       }
     };
-    fetchScreenshot();
+    fetchScreenshot(false);
 
     // Listen for screenshot-ready event (for pre-created window reuse)
     const unlisten = listen('screenshot-ready', () => {
@@ -362,7 +370,7 @@ export default function OverlayPage() {
       }
 
       // Fetch new screenshot (will replace old one when loaded)
-      fetchScreenshot();
+      fetchScreenshot(true);
     });
 
     return () => { unlisten.then(fn => fn()); };
