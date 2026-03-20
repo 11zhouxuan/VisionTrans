@@ -38,16 +38,22 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Show overlay window (called by frontend after screenshot is loaded)
+/// Show overlay window (called by frontend after screenshot is loaded onto canvas)
+///
+/// CRITICAL: This must only be called AFTER the frontend has fully rendered the
+/// screenshot onto the canvas. The window transitions from hidden → visible here,
+/// so any stale content would flash if the canvas isn't ready.
 #[tauri::command]
 pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
     if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.show();
-        let _ = window.set_always_on_top(true);
         #[cfg(target_os = "macos")]
         {
             use objc2::msg_send;
             use objc2::runtime::AnyObject;
+            // CRITICAL: Set NSWindow level and collectionBehavior BEFORE show().
+            // If we show() first with level=0, macOS may trigger a Space switch
+            // (e.g., when VSCode is fullscreen, the overlay would appear on the
+            // desktop Space instead of over the fullscreen app).
             if let Ok(ptr) = window.ns_window() {
                 let ns_window_addr = ptr as usize;
                 let app_handle = app.clone();
@@ -63,6 +69,16 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
                     }
                 });
             }
+            // Small yield to let run_on_main_thread execute before show()
+            tokio::task::yield_now().await;
+        }
+        // Now show the window - NSWindow properties are already set
+        let _ = window.show();
+        // Don't call set_always_on_top() - it may reset NSWindow properties.
+        // We already set level=2000 via native API above.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = window.set_always_on_top(true);
         }
         let _ = window.set_focus();
     }
@@ -86,16 +102,18 @@ pub async fn close_overlay(
     if let Some(window) = app.get_webview_window("overlay") {
         #[cfg(target_os = "macos")]
         {
-            // CRITICAL: Reset window level to normal BEFORE hiding.
-            // If we leave level=2000 on a hidden window, any system dialog
-            // (e.g., file access permission) that appears afterwards may be
-            // blocked by the invisible high-level window, causing a deadlock
-            // where the user cannot click anything and must force-restart.
+            // Hide the window FIRST so it disappears immediately.
+            // Then reset the window level to prevent deadlock scenarios where
+            // a hidden high-level window blocks system dialogs.
+            let _ = window.hide();
+
+            // Reset window level AFTER hiding.
+            // The window is already invisible, so level=0 won't cause a Space switch.
+            // On next show, show_overlay_window will set level=2000 BEFORE show().
             //
             // NOTE: We only reset the window LEVEL, not collectionBehavior.
             // collectionBehavior includes canJoinAllSpaces which must persist
             // so the window can appear on fullscreen Spaces when reused.
-            // Resetting it would cause a Space switch on next show().
             if let Ok(ptr) = window.ns_window() {
                 let ns_window_addr = ptr as usize;
                 let app_clone = app.clone();
@@ -114,7 +132,6 @@ pub async fn close_overlay(
                 });
             }
             let _ = window.set_always_on_top(false);
-            let _ = window.hide();
         }
         #[cfg(not(target_os = "macos"))]
         {

@@ -29,12 +29,10 @@ window.set_focus();
 - `activateIgnoringOtherApps` 会强制激活 app，导致 Space 切换
 - 在 Accessory 模式下，`show()` + `set_focus()` 就足够了
 
-### 3. 设置 NSWindow 属性（show 之后）
+### 3. 设置 NSWindow 属性（show 之前！）
 ```rust
-// 必须在 window.show() 之后设置，因为 Tauri 的 show() 会重置属性
-let _ = window.show();
-let _ = window.set_always_on_top(true);
-
+// CRITICAL: 必须在 window.show() 之前设置 level 和 collectionBehavior！
+// 如果先 show() 再设置，窗口会以 level=0 短暂出现，macOS 可能触发 Space 切换。
 // 通过 run_on_main_thread 设置原生属性
 let ns_window_addr = window.ns_window().map(|ptr| ptr as usize).unwrap_or(0);
 app.run_on_main_thread(move || {
@@ -50,6 +48,12 @@ app.run_on_main_thread(move || {
     }
 });
 
+// yield to let run_on_main_thread execute
+tokio::task::yield_now().await;
+
+// NOW show - window already has correct level, no Space switch
+let _ = window.show();
+// Don't call set_always_on_top() - it may reset NSWindow properties
 let _ = window.set_focus();
 ```
 
@@ -77,9 +81,11 @@ match window.ns_window() {
 
 ## 注意事项
 - `ns_window()` 返回的是 `TaoWindow`（NSWindow 子类），不是标准 NSWindow
-- 原生属性必须在 `show()` 之后设置（Tauri 的 show 会重置属性）
+- 原生属性（level, collectionBehavior）必须在 `show()` **之前**设置，否则窗口会以 level=0 短暂出现，可能触发 Space 切换
+- 不要调用 `set_always_on_top()` — 它可能重置 NSWindow 的原生属性
 - 使用 `run_on_main_thread` 确保 NSWindow 操作在主线程执行
 - 不要从后台线程直接调用 `ns_window()` 或 `msg_send!`（会崩溃）
+- 窗口创建时应 `visible(false)`，由前端在 canvas 准备好后调用 `show_overlay_window` 命令显示
 
 ## 相关文件
 - `src-tauri/src/lib.rs` - ActivationPolicy 设置

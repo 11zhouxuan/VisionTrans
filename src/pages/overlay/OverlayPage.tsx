@@ -248,7 +248,12 @@ export default function OverlayPage() {
 
   // Load screenshot image from file or base64
   const loadScreenshotImage = useCallback((data: ScreenshotData) => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current) {
+      // Canvas not ready - reset capturing state so user can retry
+      console.error('Canvas not available for screenshot rendering');
+      invoke('close_overlay').catch(() => {});
+      return;
+    }
     const canvas = canvasRef.current;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = window.innerWidth * dpr;
@@ -259,9 +264,12 @@ export default function OverlayPage() {
     if (ctx) ctx.scale(dpr, dpr);
 
     const img = new Image();
+    let fallbackAttempted = false;
+
     img.onload = () => {
       // Draw the screenshot to canvas IMMEDIATELY (before React re-render)
-      // This prevents the flash between show() and canvas render
+      // The window is still hidden at this point - it will only become visible
+      // after we call show_overlay_window below.
       if (canvasRef.current) {
         const drawCtx = canvasRef.current.getContext('2d');
         if (drawCtx) {
@@ -274,18 +282,28 @@ export default function OverlayPage() {
       // Update React state
       setBgImage(img);
       setScreenshotBase64(data.base64);
-      // Small delay to let the canvas draw complete, then show window
-      // (can't use requestAnimationFrame because window is hidden)
-      setTimeout(() => {
-        invoke('show_overlay_window').catch(() => {});
-      }, 16); // ~1 frame at 60fps
+      // Use double-rAF to ensure the canvas draw is fully composited before showing.
+      // First rAF schedules after the current frame, second ensures the
+      // browser has actually painted the canvas content.
+      // Note: rAF works even on hidden windows in most WebView implementations.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          invoke('show_overlay_window').catch((err) => {
+            console.error('Failed to show overlay window:', err);
+          });
+        });
+      });
     };
     img.onerror = () => {
-      // Fallback to base64 if asset:// fails
-      console.warn('asset:// load failed, falling back to base64');
-      img.onerror = null;
-      if (data.base64) {
+      if (!fallbackAttempted && data.base64) {
+        // Fallback to base64 if asset:// fails
+        console.warn('asset:// load failed, falling back to base64');
+        fallbackAttempted = true;
         img.src = `data:image/png;base64,${data.base64}`;
+      } else {
+        // Both asset:// and base64 failed - reset state so user can retry
+        console.error('Failed to load screenshot image (all methods exhausted)');
+        invoke('close_overlay').catch(() => {});
       }
     };
     // Try asset:// protocol first (fast, bypasses IPC entirely)
@@ -293,6 +311,10 @@ export default function OverlayPage() {
       img.src = convertFileSrc(data.filePath) + '?t=' + Date.now();
     } else if (data.base64) {
       img.src = `data:image/png;base64,${data.base64}`;
+    } else {
+      // No image data at all - reset state
+      console.error('Screenshot data has no filePath or base64');
+      invoke('close_overlay').catch(() => {});
     }
   }, []);
 
@@ -304,6 +326,8 @@ export default function OverlayPage() {
         loadScreenshotImage(data);
       } catch (err) {
         console.error('Failed to get screenshot:', err);
+        // Reset capturing state so user can retry
+        invoke('close_overlay').catch(() => {});
       }
     };
     fetchScreenshot();

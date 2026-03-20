@@ -131,28 +131,10 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Set native NSWindow properties for fullscreen overlay on macOS.
-#[cfg(target_os = "macos")]
-fn set_overlay_ns_window_props(app: &AppHandle, window: &tauri::WebviewWindow) {
-    use objc2::msg_send;
-    use objc2::runtime::AnyObject;
-
-    if let Ok(ptr) = window.ns_window() {
-        let ns_window_addr = ptr as usize;
-        let app_handle = app.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            if ns_window_addr != 0 {
-                unsafe {
-                    let ns_window = ns_window_addr as *mut AnyObject;
-                    let _: () = msg_send![ns_window, setLevel: 2000_i64];
-                    let behavior: usize = 1 | 16 | 64 | 256;
-                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-                    let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
-                }
-            }
-        });
-    }
-}
+// NOTE: NSWindow properties (level, collectionBehavior) are now set in
+// commands::window::show_overlay_window, which is called by the frontend
+// after the canvas is ready. This ensures properties are set right before
+// the window becomes visible, preventing Space switches.
 
 fn show_overlay_window(
     app: &AppHandle,
@@ -177,10 +159,16 @@ fn show_overlay_window(
     }
 
     // Create new overlay window (first time or if pre-creation failed)
-    eprintln!("[overlay] Creating new overlay window");
+    // The window is created hidden (visible=false). The frontend will:
+    // 1. Detect it's the overlay window via getCurrentWindow().label
+    // 2. Fetch screenshot data via get_screenshot command
+    // 3. Load the image and draw it onto the canvas
+    // 4. Call show_overlay_window command to make it visible
+    // This ensures the window is never shown with stale/empty content.
+    eprintln!("[overlay] Creating new overlay window (hidden, will show after canvas ready)");
     use tauri::WebviewWindowBuilder;
 
-    let window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
+    let _window = WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::App("/".into()))
         .title("")
         .inner_size(overlay_w, overlay_h)
         .position(0.0, 0.0)
@@ -192,12 +180,9 @@ fn show_overlay_window(
         .build()
         .map_err(|e: tauri::Error| AppError::WindowError(e.to_string()))?;
 
-    // Show immediately
-    let _ = window.show();
-    let _ = window.set_always_on_top(true);
-    #[cfg(target_os = "macos")]
-    set_overlay_ns_window_props(app, &window);
-    let _ = window.set_focus();
+    // Do NOT show the window here. The frontend will call show_overlay_window
+    // after the screenshot is loaded and drawn onto the canvas.
+    // This prevents any flash of empty/stale content.
 
     Ok(())
 }
