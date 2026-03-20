@@ -55,12 +55,14 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
             use objc2::msg_send;
             use objc2::runtime::AnyObject;
 
-            // Ensure the window is shown first (needed for first-time display
-            // when window was created with visible=false).
-            // For subsequent calls, show() on an already-visible window is a no-op.
+            // First, ensure Tauri's internal state knows the window should be visible.
+            // This is needed for the first-time display when window was created with visible=false.
+            // For subsequent calls (where we use alphaValue instead of hide), this is a no-op.
             let _ = window.show();
 
-            // Set NSWindow properties: level, collectionBehavior, alphaValue
+            // Set ALL NSWindow properties in a single run_on_main_thread block.
+            // This ensures level, collectionBehavior, mouse events, and alphaValue
+            // are all set atomically before the window becomes visible to the user.
             if let Ok(ptr) = window.ns_window() {
                 let ns_window_addr = ptr as usize;
                 let app_handle = app.clone();
@@ -68,7 +70,7 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
                     if ns_window_addr != 0 {
                         unsafe {
                             let ns_window = ns_window_addr as *mut AnyObject;
-                            // Set window level for overlay
+                            // Set window level for overlay (above all other windows)
                             let _: () = msg_send![ns_window, setLevel: 2000_i64];
                             // Collection behavior for fullscreen Space support
                             let behavior: usize = 1 | 16 | 64 | 256;
@@ -79,11 +81,13 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
                             // The canvas already has the new screenshot drawn on it,
                             // so the user sees the new content immediately.
                             let _: () = msg_send![ns_window, setAlphaValue: 1.0_f64];
+                            // Force the window to front and make it key window
+                            let _: () = msg_send![ns_window, makeKeyAndOrderFront: std::ptr::null::<AnyObject>()];
                         }
                     }
                 });
             }
-            // Small yield to let run_on_main_thread execute
+            // Yield to let run_on_main_thread execute
             tokio::task::yield_now().await;
         }
         #[cfg(not(target_os = "macos"))]
