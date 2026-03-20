@@ -41,8 +41,12 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), AppError> {
 /// Show overlay window (called by frontend after screenshot is loaded onto canvas)
 ///
 /// CRITICAL: This must only be called AFTER the frontend has fully rendered the
-/// screenshot onto the canvas. The window transitions from hidden → visible here,
-/// so any stale content would flash if the canvas isn't ready.
+/// screenshot onto the canvas. The window transitions from invisible → visible here.
+///
+/// On macOS, the overlay window uses alphaValue instead of hide/show to avoid
+/// stale content flash. The window is always "visible" to macOS (just transparent
+/// when inactive), so WebView rendering updates the compositor buffer continuously.
+/// Setting alphaValue=1 makes the current content appear instantly without flash.
 #[tauri::command]
 pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
     if let Some(window) = app.get_webview_window("overlay") {
@@ -50,10 +54,13 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
         {
             use objc2::msg_send;
             use objc2::runtime::AnyObject;
-            // CRITICAL: Set NSWindow level and collectionBehavior BEFORE show().
-            // If we show() first with level=0, macOS may trigger a Space switch
-            // (e.g., when VSCode is fullscreen, the overlay would appear on the
-            // desktop Space instead of over the fullscreen app).
+
+            // Ensure the window is shown first (needed for first-time display
+            // when window was created with visible=false).
+            // For subsequent calls, show() on an already-visible window is a no-op.
+            let _ = window.show();
+
+            // Set NSWindow properties: level, collectionBehavior, alphaValue
             if let Ok(ptr) = window.ns_window() {
                 let ns_window_addr = ptr as usize;
                 let app_handle = app.clone();
@@ -61,23 +68,27 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), AppError> {
                     if ns_window_addr != 0 {
                         unsafe {
                             let ns_window = ns_window_addr as *mut AnyObject;
+                            // Set window level for overlay
                             let _: () = msg_send![ns_window, setLevel: 2000_i64];
+                            // Collection behavior for fullscreen Space support
                             let behavior: usize = 1 | 16 | 64 | 256;
                             let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                            // Re-enable mouse events (disabled in close_overlay)
                             let _: () = msg_send![ns_window, setIgnoresMouseEvents: false];
+                            // Make window fully opaque — this is the key moment!
+                            // The canvas already has the new screenshot drawn on it,
+                            // so the user sees the new content immediately.
+                            let _: () = msg_send![ns_window, setAlphaValue: 1.0_f64];
                         }
                     }
                 });
             }
-            // Small yield to let run_on_main_thread execute before show()
+            // Small yield to let run_on_main_thread execute
             tokio::task::yield_now().await;
         }
-        // Now show the window - NSWindow properties are already set
-        let _ = window.show();
-        // Don't call set_always_on_top() - it may reset NSWindow properties.
-        // We already set level=2000 via native API above.
         #[cfg(not(target_os = "macos"))]
         {
+            let _ = window.show();
             let _ = window.set_always_on_top(true);
         }
         let _ = window.set_focus();
@@ -97,23 +108,21 @@ pub async fn close_overlay(
     // Clear screenshot data
     *state.last_screenshot.lock().unwrap() = None;
 
-    // On macOS, hide the overlay (for fast reuse on next capture).
+    // On macOS, make the overlay invisible (for fast reuse on next capture).
+    // We use alphaValue=0 + ignoresMouseEvents + move off-screen instead of hide().
+    //
+    // WHY NOT hide()?
+    // macOS Window Server caches the last rendered frame of hidden windows.
+    // When show() is called, it displays this cached frame BEFORE the WebView
+    // can render new content, causing a flash of the previous screenshot.
+    // With alphaValue=0, the window stays "visible" to macOS (just transparent),
+    // so WebView rendering continues to update the compositor's buffer.
+    // When we later set alphaValue=1, the current content is shown immediately.
+    //
     // On other platforms, close it.
     if let Some(window) = app.get_webview_window("overlay") {
         #[cfg(target_os = "macos")]
         {
-            // Hide the window FIRST so it disappears immediately.
-            // Then reset the window level to prevent deadlock scenarios where
-            // a hidden high-level window blocks system dialogs.
-            let _ = window.hide();
-
-            // Reset window level AFTER hiding.
-            // The window is already invisible, so level=0 won't cause a Space switch.
-            // On next show, show_overlay_window will set level=2000 BEFORE show().
-            //
-            // NOTE: We only reset the window LEVEL, not collectionBehavior.
-            // collectionBehavior includes canJoinAllSpaces which must persist
-            // so the window can appear on fullscreen Spaces when reused.
             if let Ok(ptr) = window.ns_window() {
                 let ns_window_addr = ptr as usize;
                 let app_clone = app.clone();
@@ -123,7 +132,11 @@ pub async fn close_overlay(
                             use objc2::msg_send;
                             use objc2::runtime::AnyObject;
                             let ns_window = ns_window_addr as *mut AnyObject;
-                            // Reset to normal window level (prevents deadlock)
+                            // Make window fully transparent (invisible but still "visible" to macOS)
+                            let _: () = msg_send![ns_window, setAlphaValue: 0.0_f64];
+                            // Block mouse events so the transparent window doesn't intercept clicks
+                            let _: () = msg_send![ns_window, setIgnoresMouseEvents: true];
+                            // Reset to normal window level (prevents deadlock with system dialogs)
                             let _: () = msg_send![ns_window, setLevel: 0_i64];
                             // DO NOT reset collectionBehavior — keep canJoinAllSpaces
                             // so the window works correctly on fullscreen Spaces

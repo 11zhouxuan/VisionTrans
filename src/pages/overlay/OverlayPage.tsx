@@ -282,16 +282,18 @@ export default function OverlayPage() {
       // Update React state
       setBgImage(img);
       setScreenshotBase64(data.base64);
-      // Use setTimeout to let the canvas draw complete before showing the window.
-      // NOTE: Do NOT use requestAnimationFrame here — rAF callbacks don't fire
-      // on hidden windows (the browser skips painting for invisible windows).
-      // Since the overlay window is hidden until we call show_overlay_window,
-      // rAF would never execute and the window would never appear.
-      setTimeout(() => {
-        invoke('show_overlay_window').catch((err) => {
-          console.error('Failed to show overlay window:', err);
+      // Use double-rAF to ensure the canvas draw is fully composited before showing.
+      // The overlay window uses alphaValue=0 (transparent) instead of hide(),
+      // so it's still "visible" to macOS and rAF callbacks fire normally.
+      // First rAF: schedules after current frame
+      // Second rAF: ensures the browser has actually painted the canvas content
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          invoke('show_overlay_window').catch((err) => {
+            console.error('Failed to show overlay window:', err);
+          });
         });
-      }, 30); // ~2 frames at 60fps, enough for canvas to flush
+      });
     };
     img.onerror = () => {
       if (!fallbackAttempted && data.base64) {
