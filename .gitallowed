@@ -1,0 +1,3 @@
+# False positives - these files discuss secret patterns but don't contain actual secrets
+.github/workflows/build.yml
+scripts/setup-git-secrets.sh
