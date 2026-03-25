@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::Instant;
 
 /// Application runtime global state, injected via Tauri's State mechanism
 pub struct AppState {
@@ -20,6 +21,8 @@ pub struct AppState {
     pub pending_translations: Mutex<HashMap<String, PendingTranslation>>,
     /// Active streaming task handles (for cancellation on window close)
     pub active_tasks: Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>,
+    /// Timestamp when is_capturing was set to true (for timeout protection)
+    pub capture_started_at: Mutex<Option<Instant>>,
 }
 
 /// A translation request waiting for the result window to signal readiness
@@ -40,6 +43,7 @@ impl AppState {
             result_window_counter: Mutex::new(0),
             pending_translations: Mutex::new(HashMap::new()),
             active_tasks: Mutex::new(HashMap::new()),
+            capture_started_at: Mutex::new(None),
         }
     }
 

@@ -7,10 +7,117 @@ use crate::errors::AppError;
 use crate::services::screenshot;
 use crate::state::AppState;
 
+/// Timeout for is_capturing state (seconds).
+/// If is_capturing has been true for longer than this, it's considered stale
+/// (e.g., due to system sleep/wake) and will be automatically reset.
+const CAPTURE_TIMEOUT_SECS: u64 = 30;
+
 /// Setup global hotkey on app startup
 pub fn setup_hotkey(app: &AppHandle) -> Result<(), AppError> {
     let hotkey_str = get_configured_hotkey(app);
     register_hotkey(app, &hotkey_str)
+}
+
+/// Re-register global hotkey after system wake from sleep.
+/// This unregisters all existing hotkeys and re-registers the configured one,
+/// because OS-level hotkey registrations can become invalid after sleep/wake.
+pub fn re_register_hotkey(app: &AppHandle) -> Result<(), AppError> {
+    eprintln!("[hotkey] Re-registering hotkey after system wake...");
+    let hotkey_str = get_configured_hotkey(app);
+
+    // Unregister all existing hotkeys first (they may be stale)
+    if let Err(e) = app.global_shortcut().unregister_all() {
+        eprintln!("[hotkey] Warning: failed to unregister old hotkeys: {}", e);
+        // Continue anyway - we still want to try registering
+    }
+
+    register_hotkey(app, &hotkey_str)?;
+    eprintln!("[hotkey] Hotkey '{}' re-registered successfully", hotkey_str);
+    Ok(())
+}
+
+/// Reset capture state after system wake.
+/// Clears any stale is_capturing lock that may have been left from before sleep.
+pub fn reset_capture_state(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let mut is_capturing = state.is_capturing.lock().unwrap();
+    if *is_capturing {
+        eprintln!("[hotkey] Resetting stale is_capturing state after system wake");
+        *is_capturing = false;
+        *state.capture_started_at.lock().unwrap() = None;
+    }
+}
+
+/// Silently restart the entire capture system.
+/// This is the ultimate recovery mechanism for any abnormal state,
+/// triggered automatically on system wake and available as a manual tray menu option.
+///
+/// Steps:
+/// 1. Reset all capture-related state (is_capturing, is_paused, last_screenshot, capture_started_at)
+/// 2. Close/destroy the overlay window if it exists (may be in a broken state)
+/// 3. Re-create the overlay window (hidden) for fast subsequent captures
+/// 4. Unregister and re-register global hotkeys
+///
+/// This entire process is silent — no windows are shown, no notifications are sent.
+pub fn restart_capture_system(app: &AppHandle) {
+    let t0 = std::time::Instant::now();
+    eprintln!("[system] Restarting capture system...");
+
+    // Step 1: Reset all capture-related state
+    {
+        let state = app.state::<AppState>();
+        *state.is_capturing.lock().unwrap() = false;
+        *state.capture_started_at.lock().unwrap() = None;
+        *state.is_paused.lock().unwrap() = false;
+        *state.last_screenshot.lock().unwrap() = None;
+        eprintln!("[system] State reset complete");
+    }
+
+    // Step 2: Destroy the old overlay window (it may be in a broken state after sleep)
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        eprintln!("[system] Destroying old overlay window...");
+        // Try hide first, then destroy
+        let _ = overlay.hide();
+        let _ = overlay.destroy();
+        eprintln!("[system] Old overlay window destroyed");
+    }
+
+    // Step 3: Re-create the overlay window (hidden) for fast subsequent captures
+    // Only on macOS where we pre-create the overlay for performance
+    #[cfg(target_os = "macos")]
+    {
+        eprintln!("[system] Re-creating overlay window (hidden)...");
+        match tauri::WebviewWindowBuilder::new(
+            app,
+            "overlay",
+            tauri::WebviewUrl::App("/".into()),
+        )
+        .title("")
+        .inner_size(800.0, 600.0)
+        .position(0.0, 0.0)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .visible(false)
+        .build()
+        {
+            Ok(_) => {
+                eprintln!("[system] Overlay window re-created (hidden)");
+            }
+            Err(e) => {
+                eprintln!("[system] Failed to re-create overlay: {} (will create on demand)", e);
+            }
+        }
+    }
+
+    // Step 4: Re-register global hotkey
+    if let Err(e) = re_register_hotkey(app) {
+        eprintln!("[system] Failed to re-register hotkey: {}", e);
+    }
+
+    let elapsed = t0.elapsed();
+    eprintln!("[system] Capture system restarted successfully ({:?})", elapsed);
 }
 
 /// Register a global hotkey
@@ -51,13 +158,27 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     let t0 = std::time::Instant::now();
     let state = app.state::<AppState>();
 
-    // Prevent duplicate triggers
+    // Prevent duplicate triggers (with timeout protection for sleep/wake scenarios)
     {
         let mut is_capturing = state.is_capturing.lock().unwrap();
         if *is_capturing {
-            return Ok(());
+            // Check if the capture has been running for too long (stale state from sleep/wake)
+            let is_stale = {
+                let capture_time = state.capture_started_at.lock().unwrap();
+                match *capture_time {
+                    Some(started) => started.elapsed().as_secs() > CAPTURE_TIMEOUT_SECS,
+                    None => true, // No timestamp recorded = definitely stale
+                }
+            };
+            if is_stale {
+                eprintln!("[hotkey] is_capturing was stale (>{}s or no timestamp), resetting", CAPTURE_TIMEOUT_SECS);
+                // Fall through to allow capture
+            } else {
+                return Ok(());
+            }
         }
         *is_capturing = true;
+        *state.capture_started_at.lock().unwrap() = Some(std::time::Instant::now());
     }
 
     // Check if paused
@@ -65,6 +186,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         let is_paused = state.is_paused.lock().unwrap();
         if *is_paused {
             *state.is_capturing.lock().unwrap() = false;
+            *state.capture_started_at.lock().unwrap() = None;
             return Ok(());
         }
     }
@@ -82,6 +204,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         let active_count = state.active_count();
         if active_count >= max_concurrency {
             *state.is_capturing.lock().unwrap() = false;
+            *state.capture_started_at.lock().unwrap() = None;
             let _ = app.notification()
                 .builder()
                 .title("VisionTrans")
@@ -102,6 +225,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
     {
         if !crate::services::permission::check_screen_recording_permission() {
             *state.is_capturing.lock().unwrap() = false;
+            *state.capture_started_at.lock().unwrap() = None;
             crate::services::permission::request_screen_recording_permission();
             return Err(AppError::ScreenRecordingPermissionDenied);
         }
@@ -112,6 +236,7 @@ pub fn trigger_capture(app: &AppHandle) -> Result<(), AppError> {
         Ok(data) => data,
         Err(e) => {
             *state.is_capturing.lock().unwrap() = false;
+            *state.capture_started_at.lock().unwrap() = None;
             return Err(e);
         }
     };

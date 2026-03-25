@@ -84,6 +84,7 @@ pub async fn close_overlay(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), AppError> {
     *state.is_capturing.lock().unwrap() = false;
+    *state.capture_started_at.lock().unwrap() = None;
     *state.last_screenshot.lock().unwrap() = None;
 
     if let Some(window) = app.get_webview_window("overlay") {

@@ -32,6 +32,7 @@ pub async fn start_translation(
 
     // Reset capturing state
     *state.is_capturing.lock().unwrap() = false;
+    *state.capture_started_at.lock().unwrap() = None;
 
     // Clear screenshot data to free memory
     *state.last_screenshot.lock().unwrap() = None;

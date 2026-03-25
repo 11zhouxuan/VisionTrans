@@ -77,9 +77,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let wordbook_item = MenuItem::with_id(app, "wordbook", "单词本", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "打开设置", true, None::<&str>)?;
     let pause_item = MenuItem::with_id(app, "pause", "暂停监听", true, None::<&str>)?;
+    let restart_item = MenuItem::with_id(app, "restart_capture", "重启截图系统", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出 VisionTrans", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&capture_item, &wordbook_item, &settings_item, &pause_item, &quit_item])?;
+    let menu = Menu::with_items(app, &[&capture_item, &wordbook_item, &settings_item, &pause_item, &restart_item, &quit_item])?;
 
     // Get the tray icon created by tauri.conf.json (id: "main-tray")
     let tray_id = TrayIconId::new("main-tray");
@@ -87,6 +88,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         tray.set_menu(Some(menu))?;
         tray.on_menu_event(move |app, event| match event.id.as_ref() {
             "capture" => {
+                // Force reset is_capturing state before triggering capture.
+                // This serves as a manual recovery path if the state got stuck
+                // (e.g., after system sleep/wake).
+                crate::hotkey::reset_capture_state(app);
                 let _ = crate::hotkey::trigger_capture(app);
             }
             "wordbook" => {
@@ -99,6 +104,10 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 let state = app.state::<AppState>();
                 let mut is_paused = state.is_paused.lock().unwrap();
                 *is_paused = !*is_paused;
+            }
+            "restart_capture" => {
+                // Silently restart the entire capture system as a manual recovery option
+                crate::hotkey::restart_capture_system(app);
             }
             "quit" => {
                 app.exit(0);

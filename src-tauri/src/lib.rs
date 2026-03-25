@@ -241,6 +241,13 @@ pub fn run() {
                         api.prevent_exit();
                     }
                 }
+                // Handle system resume from sleep/hibernate.
+                // Silently restart the entire capture system to recover from any
+                // abnormal state caused by sleep/wake (stale hotkeys, stuck state, broken overlay).
+                tauri::RunEvent::Resumed => {
+                    eprintln!("[system] App resumed from sleep/hibernate, restarting capture system...");
+                    hotkey::restart_capture_system(app_handle);
+                }
                 // Handle Dock icon click (macOS reopen event)
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {
