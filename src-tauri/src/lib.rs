@@ -205,6 +205,25 @@ pub fn run() {
                 }
             }
 
+            // Start background health check timer.
+            // Every 60 seconds, checks if the overlay window and hotkey are still healthy.
+            // If the overlay window was destroyed (e.g., by system sleep/wake or App Nap),
+            // it silently recreates it so the next capture is instant.
+            // Resource cost: ~100ns per check when everything is fine, 8KB thread stack.
+            {
+                let health_handle = app_handle.clone();
+                std::thread::spawn(move || {
+                    // Wait 10 seconds after startup before first check
+                    // (give the app time to fully initialize)
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    loop {
+                        hotkey::health_check(&health_handle);
+                        std::thread::sleep(std::time::Duration::from_secs(60));
+                    }
+                });
+                eprintln!("[setup] Background health check timer started (every 60s)");
+            }
+
             // Check if onboarding is needed
             let onboarding_completed = store
                 .get("onboardingCompleted")

@@ -120,6 +120,58 @@ pub fn restart_capture_system(app: &AppHandle) {
     eprintln!("[system] Capture system restarted successfully ({:?})", elapsed);
 }
 
+/// Background health check for the capture system.
+/// Called periodically by a background timer to ensure the overlay window
+/// and hotkey are always ready, even after system sleep, App Nap, etc.
+///
+/// This is a lightweight check (~100ns when everything is fine):
+/// - If overlay window is missing → recreate it (hidden)
+/// - Re-register hotkey to prevent stale registrations
+/// - Only runs when not actively capturing
+pub fn health_check(app: &AppHandle) {
+    let state = app.state::<AppState>();
+
+    // Skip if currently capturing (don't interfere with active capture)
+    {
+        let is_capturing = state.is_capturing.lock().unwrap();
+        if *is_capturing {
+            return;
+        }
+    }
+
+    // Check if overlay window exists; if not, recreate it (hidden)
+    if app.get_webview_window("overlay").is_none() {
+        eprintln!("[health] Overlay window missing, recreating (hidden)...");
+        match tauri::WebviewWindowBuilder::new(
+            app,
+            "overlay",
+            tauri::WebviewUrl::App("/".into()),
+        )
+        .title("")
+        .inner_size(800.0, 600.0)
+        .position(0.0, 0.0)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .visible(false)
+        .build()
+        {
+            Ok(_) => {
+                eprintln!("[health] Overlay window recreated (hidden, WebView warming up)");
+            }
+            Err(e) => {
+                eprintln!("[health] Failed to recreate overlay: {}", e);
+            }
+        }
+    }
+
+    // Re-register hotkey (lightweight, prevents stale registrations from App Nap etc.)
+    if let Err(e) = re_register_hotkey(app) {
+        eprintln!("[health] Failed to re-register hotkey: {}", e);
+    }
+}
+
 /// Register a global hotkey
 pub fn register_hotkey(app: &AppHandle, hotkey_str: &str) -> Result<(), AppError> {
     let app_handle = app.clone();
