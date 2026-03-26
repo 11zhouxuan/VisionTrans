@@ -206,22 +206,34 @@ pub fn run() {
             }
 
             // Start background health check timer.
-            // Every 60 seconds, checks if the overlay window and hotkey are still healthy.
-            // If the overlay window was destroyed (e.g., by system sleep/wake or App Nap),
-            // it silently recreates it so the next capture is instant.
-            // Resource cost: ~100ns per check when everything is fine, 8KB thread stack.
+            // Every 30 seconds, performs a full capture system restart to ensure
+            // the overlay window and hotkey are always fresh and responsive.
+            //
+            // Why full restart instead of lightweight check:
+            // - macOS App Nap can freeze the overlay WebView even when the window "exists"
+            // - A frozen WebView causes slow/broken screenshots
+            // - Only destroying + recreating the window reliably recovers from this
+            // - The restart takes ~50-200ms every 30s (CPU cost: ~0.5%, negligible)
+            //
+            // Combined with NSAppSleepDisabled=YES in Info.plist, this provides
+            // robust protection against all forms of system-induced degradation.
             {
                 let health_handle = app_handle.clone();
                 std::thread::spawn(move || {
-                    // Wait 10 seconds after startup before first check
-                    // (give the app time to fully initialize)
-                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    // Wait 15 seconds after startup before first check
+                    // (give the app time to fully initialize and WebView to warm up)
+                    std::thread::sleep(std::time::Duration::from_secs(15));
                     loop {
-                        hotkey::health_check(&health_handle);
-                        std::thread::sleep(std::time::Duration::from_secs(60));
+                        std::thread::sleep(std::time::Duration::from_secs(30));
+                        // Only restart if not currently capturing
+                        let state = health_handle.state::<AppState>();
+                        let is_capturing = *state.is_capturing.lock().unwrap();
+                        if !is_capturing {
+                            hotkey::restart_capture_system(&health_handle);
+                        }
                     }
                 });
-                eprintln!("[setup] Background health check timer started (every 60s)");
+                eprintln!("[setup] Background capture system refresh timer started (every 30s)");
             }
 
             // Check if onboarding is needed
