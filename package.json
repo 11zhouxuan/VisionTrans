@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "postinstall": "node -e \"try { require('child_process').execSync('bash scripts/setup-git-secrets.sh', {stdio:'inherit'}) } catch(e) { console.log('⚠️  git-secrets setup skipped (install git-secrets to enable)') }\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
